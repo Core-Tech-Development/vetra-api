@@ -1,0 +1,53 @@
+package dev.vetra.api.modules.scheduling.usecase;
+
+import dev.vetra.api.modules.scheduling.domain.Appointment;
+import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
+import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
+import dev.vetra.api.shared.exception.BusinessException;
+import dev.vetra.api.shared.exception.NotFoundException;
+import io.smallrye.mutiny.Uni;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
+
+import java.time.Instant;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Marks an appointment as WAITING_REPORT and sets the actual end time.
+ * Valid source status: IN_SERVICE.
+ */
+@ApplicationScoped
+public class CompleteExamUseCase {
+
+    private static final Logger LOG = Logger.getLogger(CompleteExamUseCase.class);
+
+    private final AppointmentRepository appointmentRepository;
+    private final AppointmentOwnershipValidator ownershipValidator;
+
+    @Inject
+    public CompleteExamUseCase(AppointmentRepository appointmentRepository,
+                               AppointmentOwnershipValidator ownershipValidator) {
+        this.appointmentRepository = appointmentRepository;
+        this.ownershipValidator = ownershipValidator;
+    }
+
+    public Uni<Appointment> execute(UUID id, String callerUserId, Set<String> callerRoles) {
+        return appointmentRepository.findById(id)
+                .map(opt -> opt.orElseThrow(() -> new NotFoundException("Appointment", id)))
+                .flatMap(appointment -> ownershipValidator.validate(appointment, callerUserId, callerRoles)
+                        .replaceWith(appointment))
+                .flatMap(appointment -> {
+                    if (!appointment.status().canTransitionTo(AppointmentStatus.WAITING_REPORT)) {
+                        return Uni.createFrom().failure(
+                                new BusinessException("INVALID_STATUS",
+                                        "Cannot complete exam for appointment with status: " + appointment.status())
+                        );
+                    }
+                    LOG.infof("Exam completed, appointment awaiting report: id=%s", id);
+                    Appointment updated = appointment.withActualEnd(Instant.now(), AppointmentStatus.WAITING_REPORT);
+                    return appointmentRepository.update(updated);
+                });
+    }
+}

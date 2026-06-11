@@ -1,0 +1,43 @@
+package dev.vetra.api.modules.scheduling.domain;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * Domain model representing a specialist's availability time slot.
+ * Pure Java record — no framework annotations.
+ */
+public record AvailabilitySlot(
+        UUID id,
+        UUID specialistId,
+        Instant startAt,
+        Instant endAt,
+        SlotStatus status,
+        Instant createdAt,
+        Instant updatedAt
+) {
+
+    /**
+     * Factory for creating a new availability slot with AVAILABLE status.
+     */
+    public static AvailabilitySlot create(UUID specialistId, Instant startAt, Instant endAt) {
+        Instant now = Instant.now();
+        return new AvailabilitySlot(
+                UUID.randomUUID(),
+                specialistId,
+                startAt,
+                endAt,
+                SlotStatus.AVAILABLE,
+                now,
+                now
+        );
+    }
+
+    /**
+     * Factory for restoring an availability slot from persistence.
+     */
+    public static AvailabilitySlot restore(UUID id, UUID specialistId, Instant startAt, Instant endAt,
+                                           SlotStatus status, Instant createdAt, Instant updatedAt) {
+        return new AvailabilitySlot(id, specialistId, startAt, endAt, status, createdAt, updatedAt);
+    }
+}
