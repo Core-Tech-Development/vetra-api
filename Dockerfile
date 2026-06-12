@@ -8,6 +8,10 @@ COPY --chown=quarkus:quarkus pom.xml .
 COPY --chown=quarkus:quarkus .mvn .mvn
 COPY --chown=quarkus:quarkus mvnw .
 RUN chmod +x mvnw
+RUN mkdir -p /app/.mvn/wrapper && \
+    curl -sL https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper/3.3.2/maven-wrapper-3.3.2.jar \
+    -o /app/.mvn/wrapper/maven-wrapper.jar && \
+    chown quarkus:quarkus /app/.mvn/wrapper/maven-wrapper.jar
 USER quarkus
 RUN ./mvnw dependency:go-offline -B
 COPY --chown=quarkus:quarkus src src
