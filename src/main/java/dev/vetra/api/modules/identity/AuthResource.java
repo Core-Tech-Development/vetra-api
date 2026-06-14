@@ -2,6 +2,7 @@ package dev.vetra.api.modules.identity;
 
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.client.WebClientOptions;
 import io.vertx.mutiny.core.Vertx;
@@ -24,8 +25,6 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.logging.Logger;
 
-import io.vertx.core.json.JsonArray;
-
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -36,12 +35,14 @@ import java.nio.charset.StandardCharsets;
 @Path("/api/v1/auth")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@Tag(name = "Authentication", description = "Login and CAPTCHA endpoints")
+@Tag(name = "Authentication", description = "Login, CAPTCHA, and password reset endpoints")
 public class AuthResource {
 
     private static final Logger LOG = Logger.getLogger(AuthResource.class);
 
     private final CaptchaService captchaService;
+    private final SesEmailService sesEmailService;
+    private final PasswordResetTokenService tokenService;
     private final Vertx vertx;
 
     @ConfigProperty(name = "vetra.keycloak.admin-url", defaultValue = "http://keycloak:8080")
@@ -59,11 +60,17 @@ public class AuthResource {
     @ConfigProperty(name = "vetra.keycloak.admin-password", defaultValue = "admin")
     String adminPassword;
 
+    @ConfigProperty(name = "vetra.frontend.url", defaultValue = "http://localhost:5173")
+    String frontendUrl;
+
     private WebClient webClient;
 
     @Inject
-    public AuthResource(CaptchaService captchaService, Vertx vertx) {
+    public AuthResource(CaptchaService captchaService, SesEmailService sesEmailService,
+                        PasswordResetTokenService tokenService, Vertx vertx) {
         this.captchaService = captchaService;
+        this.sesEmailService = sesEmailService;
+        this.tokenService = tokenService;
         this.vertx = vertx;
     }
 
@@ -93,17 +100,15 @@ public class AuthResource {
             @APIResponse(responseCode = "401", description = "Invalid credentials or account locked")
     })
     public Uni<Response> login(@Valid LoginRequest request) {
-        // Step 1: Verify CAPTCHA
         if (!captchaService.verifySolution(request.captcha())) {
             LOG.warnf("CAPTCHA verification failed for user: %s", request.username());
             return Uni.createFrom().item(
                     Response.status(Response.Status.BAD_REQUEST)
-                            .entity(new ErrorResponse("captcha_failed", "CAPTCHA verification failed. Please try again."))
-                            .build()
-            );
+                            .entity(new ErrorResponse("captcha_failed",
+                                    "CAPTCHA verification failed. Please try again."))
+                            .build());
         }
 
-        // Step 2: Forward to Keycloak token endpoint
         String tokenUrl = keycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
 
         String body = "grant_type=password"
@@ -126,27 +131,25 @@ public class AuthResource {
                                 .build();
                     }
 
-                    // Handle Keycloak error responses
                     String error = responseBody != null ? responseBody.getString("error", "") : "";
-                    String errorDescription = responseBody != null ? responseBody.getString("error_description", "") : "";
+                    String errorDescription = responseBody != null
+                            ? responseBody.getString("error_description", "") : "";
 
                     LOG.warnf("Login failed for user: %s, error: %s, description: %s",
                             request.username(), error, errorDescription);
 
                     if ("invalid_grant".equals(error)) {
-                        // Check if user is temporarily locked
                         if (errorDescription != null && (
-                                errorDescription.toLowerCase().contains("temporarily disabled") ||
-                                errorDescription.toLowerCase().contains("temporarily locked"))) {
+                                errorDescription.toLowerCase().contains("temporarily disabled")
+                                        || errorDescription.toLowerCase().contains("temporarily locked"))) {
                             return Response.status(Response.Status.UNAUTHORIZED)
                                     .entity(new ErrorResponse("user_temporarily_disabled",
                                             "Account temporarily locked due to too many failed attempts. Try again in 30 minutes."))
                                     .build();
                         }
-                        // Check if user is permanently disabled
                         if (errorDescription != null && (
-                                errorDescription.toLowerCase().contains("disabled") ||
-                                errorDescription.toLowerCase().contains("locked"))) {
+                                errorDescription.toLowerCase().contains("disabled")
+                                        || errorDescription.toLowerCase().contains("locked"))) {
                             return Response.status(Response.Status.UNAUTHORIZED)
                                     .entity(new ErrorResponse("user_disabled",
                                             "Account is disabled. Contact your administrator."))
@@ -165,44 +168,94 @@ public class AuthResource {
                     }
 
                     return Response.status(Response.Status.UNAUTHORIZED)
-                            .entity(new ErrorResponse(error, errorDescription.isEmpty() ? "Authentication failed." : errorDescription))
+                            .entity(new ErrorResponse(error,
+                                    errorDescription.isEmpty() ? "Authentication failed." : errorDescription))
                             .build();
                 });
     }
 
+    // ── Forgot Password ─────────────────────────────────────────────────────────
+
     @POST
     @Path("/forgot-password")
-    @Operation(summary = "Request password reset", description = "Sends a password reset email via Keycloak")
+    @Operation(summary = "Request password reset",
+            description = "Sends a password reset email via AWS SES")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Reset email sent (or user not found — same response for security)"),
+            @APIResponse(responseCode = "200",
+                    description = "Reset email sent (or user not found — same response for security)"),
             @APIResponse(responseCode = "400", description = "Invalid email format")
     })
     public Uni<Response> forgotPassword(@Valid ForgotPasswordRequest request) {
-        // Always return success to prevent email enumeration
         Response successResponse = Response.ok(
                 new MessageResponse("If an account with that email exists, a password reset link has been sent.")
         ).build();
 
         return getAdminToken()
-                .flatMap(token -> findUserByEmail(token, request.email())
-                        .flatMap(result -> {
-                            if (result == null) {
-                                LOG.infof("Password reset requested for non-existent email: %s", request.email());
-                                return Uni.createFrom().item(successResponse);
-                            }
+                .flatMap(token -> findUserByEmail(token, request.email()))
+                .flatMap(result -> {
+                    if (result == null) {
+                        LOG.infof("Password reset requested for non-existent email: %s",
+                                request.email());
+                        return Uni.createFrom().item(successResponse);
+                    }
 
-                            String token2 = result.getString("token");
-                            String userId = result.getString("userId");
+                    String userId = result.getString("userId");
+                    String resetToken = tokenService.generateToken(userId);
+                    String resetUrl = frontendUrl + "/reset-password?token=" + resetToken;
 
-                            return sendResetPasswordEmail(token2, userId, request.email())
-                                    .map(v -> successResponse);
-                        })
-                )
+                    String htmlBody = buildResetEmailHtml(resetUrl);
+                    String textBody = "Reset your Vetra password by visiting: " + resetUrl
+                            + "\n\nThis link expires in 1 hour."
+                            + "\n\nIf you did not request this, ignore this email.";
+
+                    return sesEmailService.sendEmail(
+                                    request.email(),
+                                    "Reset your Vetra password",
+                                    htmlBody,
+                                    textBody)
+                            .map(v -> successResponse);
+                })
                 .onFailure().recoverWithItem(err -> {
-                    LOG.errorf("Failed to process password reset for %s: %s", request.email(), err.getMessage());
+                    LOG.errorf("Failed to process password reset for %s: %s",
+                            request.email(), err.getMessage());
                     return successResponse;
                 });
     }
+
+    // ── Reset Password ──────────────────────────────────────────────────────────
+
+    @POST
+    @Path("/reset-password")
+    @Operation(summary = "Reset password with token",
+            description = "Validates the reset token and sets a new password")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Password reset successful"),
+            @APIResponse(responseCode = "400", description = "Invalid or expired token")
+    })
+    public Uni<Response> resetPassword(@Valid ResetPasswordRequest request) {
+        String userId = tokenService.validateAndGetUserId(request.token());
+        if (userId == null) {
+            return Uni.createFrom().item(
+                    Response.status(Response.Status.BAD_REQUEST)
+                            .entity(new ErrorResponse("invalid_token",
+                                    "The reset link is invalid or has expired. Please request a new one."))
+                            .build());
+        }
+
+        return getAdminToken()
+                .flatMap(adminToken -> resetKeycloakPassword(adminToken, userId, request.newPassword()))
+                .map(v -> Response.ok(
+                        new MessageResponse("Password has been reset successfully.")).build())
+                .onFailure().recoverWithItem(err -> {
+                    LOG.errorf("Failed to reset password for userId %s: %s", userId, err.getMessage());
+                    return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                            .entity(new ErrorResponse("reset_failed",
+                                    "Failed to reset password. Please try again."))
+                            .build();
+                });
+    }
+
+    // ── Keycloak Admin helpers ──────────────────────────────────────────────────
 
     private Uni<String> getAdminToken() {
         String tokenUrl = keycloakUrl + "/realms/master/protocol/openid-connect/token";
@@ -216,7 +269,8 @@ public class AuthResource {
                 .sendBuffer(Buffer.buffer(body))
                 .map(response -> {
                     if (response.statusCode() != 200) {
-                        throw new RuntimeException("Failed to get Keycloak admin token: " + response.statusCode());
+                        throw new RuntimeException(
+                                "Failed to get Keycloak admin token: " + response.statusCode());
                     }
                     return response.bodyAsJsonObject().getString("access_token");
                 });
@@ -230,38 +284,76 @@ public class AuthResource {
                 .putHeader("Authorization", "Bearer " + token)
                 .send()
                 .map(response -> {
-                    if (response.statusCode() != 200) {
-                        return null;
-                    }
+                    if (response.statusCode() != 200) return null;
                     JsonArray users = response.bodyAsJsonArray();
-                    if (users == null || users.isEmpty()) {
-                        return null;
-                    }
+                    if (users == null || users.isEmpty()) return null;
                     return new JsonObject()
-                            .put("token", token)
                             .put("userId", users.getJsonObject(0).getString("id"));
                 });
     }
 
-    private Uni<Void> sendResetPasswordEmail(String token, String userId, String email) {
-        String actionsUrl = keycloakUrl + "/admin/realms/" + realm + "/users/" + userId
-                + "/execute-actions-email?lifespan=3600";
+    private Uni<Void> resetKeycloakPassword(String adminToken, String userId, String newPassword) {
+        String url = keycloakUrl + "/admin/realms/" + realm + "/users/" + userId + "/reset-password";
 
-        JsonArray actions = new JsonArray().add("UPDATE_PASSWORD");
+        JsonObject credential = new JsonObject()
+                .put("type", "password")
+                .put("value", newPassword)
+                .put("temporary", false);
 
-        return webClient.putAbs(actionsUrl)
-                .putHeader("Authorization", "Bearer " + token)
+        return webClient.putAbs(url)
+                .putHeader("Authorization", "Bearer " + adminToken)
                 .putHeader("Content-Type", "application/json")
-                .sendBuffer(Buffer.buffer(actions.encode()))
+                .sendBuffer(Buffer.buffer(credential.encode()))
                 .map(response -> {
-                    if (response.statusCode() == 204 || response.statusCode() == 200) {
-                        LOG.infof("Password reset email sent for user: %s", email);
-                    } else {
-                        LOG.warnf("Failed to send password reset email for %s: status=%d, body=%s",
-                                email, response.statusCode(), response.bodyAsString());
+                    if (response.statusCode() != 204 && response.statusCode() != 200) {
+                        throw new RuntimeException("Keycloak reset-password failed: status="
+                                + response.statusCode() + ", body=" + response.bodyAsString());
                     }
+                    LOG.infof("Password reset via Keycloak for userId: %s", userId);
                     return null;
                 });
+    }
+
+    // ── Email template ──────────────────────────────────────────────────────────
+
+    private String buildResetEmailHtml(String resetUrl) {
+        return """
+                <!DOCTYPE html>
+                <html lang="pt-BR">
+                <head><meta charset="UTF-8"></head>
+                <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#F7FAF8;">
+                  <table width="100%%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
+                    <tr><td align="center">
+                      <table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;border:1px solid #D7E3DC;padding:40px;">
+                        <tr><td style="text-align:center;padding-bottom:24px;">
+                          <span style="font-size:24px;font-weight:700;color:#1F6F5B;">Vetra</span>
+                        </td></tr>
+                        <tr><td style="font-size:20px;font-weight:600;color:#17211B;padding-bottom:16px;">
+                          Redefinir sua senha
+                        </td></tr>
+                        <tr><td style="font-size:14px;color:#4F6257;line-height:1.6;padding-bottom:24px;">
+                          Recebemos uma solicitacao para redefinir a senha da sua conta Vetra.
+                          Clique no botao abaixo para criar uma nova senha. Este link expira em 1 hora.
+                        </td></tr>
+                        <tr><td style="padding-bottom:24px;">
+                          <a href="%s"
+                             style="display:inline-block;padding:12px 32px;background-color:#1F6F5B;color:#fff;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px;">
+                            Redefinir senha
+                          </a>
+                        </td></tr>
+                        <tr><td style="font-size:12px;color:#4F6257;line-height:1.5;padding-bottom:16px;">
+                          Se voce nao solicitou a redefinicao de senha, ignore este email.
+                          Sua senha permanecera inalterada.
+                        </td></tr>
+                        <tr><td style="border-top:1px solid #D7E3DC;padding-top:16px;font-size:11px;color:#9BA8A0;">
+                          Vetra — Plataforma de Diagnostico Veterinario por Imagem
+                        </td></tr>
+                      </table>
+                    </td></tr>
+                  </table>
+                </body>
+                </html>
+                """.formatted(resetUrl);
     }
 
     @RegisterForReflection
