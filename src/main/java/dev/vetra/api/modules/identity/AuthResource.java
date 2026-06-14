@@ -1,5 +1,6 @@
 package dev.vetra.api.modules.identity;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.client.WebClientOptions;
@@ -161,5 +162,6 @@ public class AuthResource {
                 });
     }
 
+    @RegisterForReflection
     public record ErrorResponse(String error, String message) {}
 }

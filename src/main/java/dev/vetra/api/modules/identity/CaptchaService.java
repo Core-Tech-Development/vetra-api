@@ -1,5 +1,6 @@
 package dev.vetra.api.modules.identity;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -159,6 +160,7 @@ public class CaptchaService {
         return obj.getMap();
     }
 
+    @RegisterForReflection
     public record CaptchaChallenge(
             String algorithm,
             String challenge,
