@@ -1,5 +1,7 @@
 package dev.vetra.api.modules.laudo.usecase;
 
+import dev.vetra.api.modules.billing.usecase.CreateBillingRecordUseCase;
+import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
 import dev.vetra.api.modules.laudo.domain.Laudo;
 import dev.vetra.api.modules.laudo.domain.LaudoStatus;
 import dev.vetra.api.modules.laudo.repository.LaudoRepository;
@@ -27,11 +29,18 @@ public class IssueLaudoUseCase {
 
     private final LaudoRepository laudoRepository;
     private final AppointmentRepository appointmentRepository;
+    private final ExamRequestRepository examRequestRepository;
+    private final CreateBillingRecordUseCase createBillingRecordUseCase;
 
     @Inject
-    public IssueLaudoUseCase(LaudoRepository laudoRepository, AppointmentRepository appointmentRepository) {
+    public IssueLaudoUseCase(LaudoRepository laudoRepository,
+                              AppointmentRepository appointmentRepository,
+                              ExamRequestRepository examRequestRepository,
+                              CreateBillingRecordUseCase createBillingRecordUseCase) {
         this.laudoRepository = laudoRepository;
         this.appointmentRepository = appointmentRepository;
+        this.examRequestRepository = examRequestRepository;
+        this.createBillingRecordUseCase = createBillingRecordUseCase;
     }
 
     public Uni<Laudo> execute(UUID laudoId) {
@@ -73,7 +82,36 @@ public class IssueLaudoUseCase {
                                             .onFailure().invoke(err -> LOG.warnf(err, "Failed to update appointment status for %s", savedLaudo.appointmentId()))
                                             .onFailure().recoverWithNull()
                                             .map(v -> savedLaudo)
-                            );
+                            )
+                            .flatMap(savedLaudo -> triggerBilling(savedLaudo)
+                                    .map(v -> savedLaudo));
+                });
+    }
+
+    private Uni<Void> triggerBilling(Laudo laudo) {
+        return appointmentRepository.findById(laudo.appointmentId())
+                .flatMap(aptOpt -> {
+                    if (aptOpt.isEmpty()) {
+                        LOG.warnf("Appointment %s not found for billing trigger", laudo.appointmentId());
+                        return Uni.createFrom().voidItem();
+                    }
+                    var appointment = aptOpt.get();
+                    return examRequestRepository.findById(appointment.examRequestId())
+                            .flatMap(erOpt -> {
+                                if (erOpt.isEmpty()) {
+                                    LOG.warnf("ExamRequest %s not found for billing trigger", appointment.examRequestId());
+                                    return Uni.createFrom().voidItem();
+                                }
+                                UUID clinicId = erOpt.get().clinicId();
+                                LOG.infof("Triggering billing for laudo=%s, appointment=%s, clinic=%s, specialist=%s",
+                                        laudo.id(), laudo.appointmentId(), clinicId, laudo.specialistId());
+                                return createBillingRecordUseCase.execute(
+                                                laudo.id(), laudo.appointmentId(), clinicId, laudo.specialistId())
+                                        .onItem().invoke(record -> LOG.infof("Billing record created: %s", record.id()))
+                                        .onFailure().invoke(err -> LOG.errorf(err, "Failed to create billing record for laudo %s", laudo.id()))
+                                        .onFailure().recoverWithNull()
+                                        .replaceWithVoid();
+                            });
                 });
     }
 }

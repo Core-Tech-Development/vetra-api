@@ -113,6 +113,12 @@
             <artifactId>quarkus-hibernate-validator</artifactId>
         </dependency>
 
+        <!-- Scheduler (retry pending payments) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
+
         <!-- MinIO S3-compatible Object Storage -->
         <dependency>
             <groupId>io.minio</groupId>
