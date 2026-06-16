@@ -35,13 +35,15 @@ public class AvailabilitySlotRepository {
         params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.startAt(), ZoneOffset.UTC));
         params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.endAt(), ZoneOffset.UTC));
         params.addString(slot.status().name());
+        params.addString(slot.label());
+        params.addUUID(slot.recurrenceGroupId());
         params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.createdAt(), ZoneOffset.UTC));
         params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.updatedAt(), ZoneOffset.UTC));
 
         return client.preparedQuery("""
-                        INSERT INTO availability_slot (id, specialist_id, start_at, end_at, status, created_at, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        RETURNING id, specialist_id, start_at, end_at, status, created_at, updated_at
+                        INSERT INTO availability_slot (id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        RETURNING id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at
                         """)
                 .execute(params)
                 .map(rows -> mapRow(rows.iterator().next()));
@@ -49,7 +51,7 @@ public class AvailabilitySlotRepository {
 
     public Uni<Optional<AvailabilitySlot>> findById(UUID id) {
         return client.preparedQuery("""
-                        SELECT id, specialist_id, start_at, end_at, status, created_at, updated_at
+                        SELECT id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at
                         FROM availability_slot
                         WHERE id = $1
                         """)
@@ -59,7 +61,7 @@ public class AvailabilitySlotRepository {
 
     public Uni<List<AvailabilitySlot>> findBySpecialistId(UUID specialistId, int offset, int limit) {
         return client.preparedQuery("""
-                        SELECT id, specialist_id, start_at, end_at, status, created_at, updated_at
+                        SELECT id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at
                         FROM availability_slot
                         WHERE specialist_id = $1
                         ORDER BY start_at ASC
@@ -71,7 +73,7 @@ public class AvailabilitySlotRepository {
 
     public Uni<List<AvailabilitySlot>> findAvailableBySpecialistId(UUID specialistId) {
         return client.preparedQuery("""
-                        SELECT id, specialist_id, start_at, end_at, status, created_at, updated_at
+                        SELECT id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at
                         FROM availability_slot
                         WHERE specialist_id = $1 AND status = 'AVAILABLE'
                         ORDER BY start_at ASC
@@ -107,6 +109,93 @@ public class AvailabilitySlotRepository {
                 .map(rows -> rows.rowCount() > 0);
     }
 
+    /**
+     * Checks whether a specialist already has a non-cancelled slot that overlaps
+     * with the given time range using PostgreSQL tstzrange overlap operator.
+     */
+    public Uni<Boolean> hasOverlappingSlot(UUID specialistId, Instant startAt, Instant endAt) {
+        Tuple params = Tuple.tuple();
+        params.addUUID(specialistId);
+        params.addOffsetDateTime(OffsetDateTime.ofInstant(startAt, ZoneOffset.UTC));
+        params.addOffsetDateTime(OffsetDateTime.ofInstant(endAt, ZoneOffset.UTC));
+
+        return client.preparedQuery("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM availability_slot
+                            WHERE specialist_id = $1
+                              AND status != 'CANCELLED'
+                              AND tstzrange(start_at, end_at) && tstzrange($2, $3)
+                        ) AS has_overlap
+                        """)
+                .execute(params)
+                .map(rows -> rows.iterator().next().getBoolean("has_overlap"));
+    }
+
+    /**
+     * Returns all slots for a specialist within a date range, ordered by start_at ASC.
+     * Useful for calendar views.
+     */
+    public Uni<List<AvailabilitySlot>> findBySpecialistIdAndDateRange(UUID specialistId,
+                                                                      Instant rangeStart,
+                                                                      Instant rangeEnd) {
+        Tuple params = Tuple.tuple();
+        params.addUUID(specialistId);
+        params.addOffsetDateTime(OffsetDateTime.ofInstant(rangeStart, ZoneOffset.UTC));
+        params.addOffsetDateTime(OffsetDateTime.ofInstant(rangeEnd, ZoneOffset.UTC));
+
+        return client.preparedQuery("""
+                        SELECT id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at
+                        FROM availability_slot
+                        WHERE specialist_id = $1
+                          AND start_at >= $2
+                          AND start_at < $3
+                        ORDER BY start_at ASC
+                        """)
+                .execute(params)
+                .map(this::mapList);
+    }
+
+    /**
+     * Atomically inserts a batch of availability slots within a transaction.
+     */
+    public Uni<List<AvailabilitySlot>> saveBatch(List<AvailabilitySlot> slots) {
+        if (slots.isEmpty()) {
+            return Uni.createFrom().item(List.of());
+        }
+
+        return client.withTransaction(conn -> {
+            Uni<List<AvailabilitySlot>> result = Uni.createFrom().item(new ArrayList<>());
+
+            for (AvailabilitySlot slot : slots) {
+                Tuple params = Tuple.tuple();
+                params.addUUID(slot.id());
+                params.addUUID(slot.specialistId());
+                params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.startAt(), ZoneOffset.UTC));
+                params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.endAt(), ZoneOffset.UTC));
+                params.addString(slot.status().name());
+                params.addString(slot.label());
+                params.addUUID(slot.recurrenceGroupId());
+                params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.createdAt(), ZoneOffset.UTC));
+                params.addOffsetDateTime(OffsetDateTime.ofInstant(slot.updatedAt(), ZoneOffset.UTC));
+
+                result = result.flatMap(list ->
+                        conn.preparedQuery("""
+                                        INSERT INTO availability_slot (id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at)
+                                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                        RETURNING id, specialist_id, start_at, end_at, status, label, recurrence_group_id, created_at, updated_at
+                                        """)
+                                .execute(params)
+                                .map(rows -> {
+                                    list.add(mapRow(rows.iterator().next()));
+                                    return list;
+                                })
+                );
+            }
+
+            return result;
+        });
+    }
+
     // ---- Row Mapping ----
 
     private AvailabilitySlot mapRow(Row row) {
@@ -116,6 +205,8 @@ public class AvailabilitySlotRepository {
                 row.getOffsetDateTime("start_at").toInstant(),
                 row.getOffsetDateTime("end_at").toInstant(),
                 SlotStatus.valueOf(row.getString("status")),
+                row.getString("label"),
+                row.getUUID("recurrence_group_id"),
                 row.getOffsetDateTime("created_at").toInstant(),
                 row.getOffsetDateTime("updated_at").toInstant()
         );

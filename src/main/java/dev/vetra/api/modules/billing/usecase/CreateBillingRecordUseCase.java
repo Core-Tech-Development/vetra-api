@@ -8,6 +8,8 @@ import dev.vetra.api.modules.billing.service.AsaasApiClient;
 import dev.vetra.api.modules.billing.service.AsaasCustomerSyncService;
 import dev.vetra.api.modules.billing.service.BillingPriceResolver;
 import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonObject;
@@ -32,6 +34,7 @@ public class CreateBillingRecordUseCase {
     private final AsaasApiClient asaasApiClient;
     private final AppointmentRepository appointmentRepository;
     private final ExamRequestRepository examRequestRepository;
+    private final NotificationService notificationService;
 
     @ConfigProperty(name = "vetra.asaas.default-billing-type", defaultValue = "PIX")
     String defaultBillingType;
@@ -46,7 +49,8 @@ public class CreateBillingRecordUseCase {
                                       AsaasCustomerSyncService customerSyncService,
                                       AsaasApiClient asaasApiClient,
                                       AppointmentRepository appointmentRepository,
-                                      ExamRequestRepository examRequestRepository) {
+                                      ExamRequestRepository examRequestRepository,
+                                      NotificationService notificationService) {
         this.billingRecordRepository = billingRecordRepository;
         this.billingPaymentRepository = billingPaymentRepository;
         this.priceResolver = priceResolver;
@@ -54,6 +58,7 @@ public class CreateBillingRecordUseCase {
         this.asaasApiClient = asaasApiClient;
         this.appointmentRepository = appointmentRepository;
         this.examRequestRepository = examRequestRepository;
+        this.notificationService = notificationService;
     }
 
     public Uni<BillingRecord> execute(UUID laudoId, UUID appointmentId, UUID clinicId, UUID specialistId) {
@@ -79,7 +84,12 @@ public class CreateBillingRecordUseCase {
                                         examType, price.totalCents(), price.platformFeeCents());
 
                                 return billingRecordRepository.save(record)
-                                        .flatMap(saved -> attemptAsaasPayment(saved, clinicId));
+                                        .flatMap(saved -> attemptAsaasPayment(saved, clinicId))
+                                        .call(saved -> notificationService.notifyClinicAdmins(
+                                                clinicId,
+                                                NotificationType.BILLING_RECORD_CREATED,
+                                                "Novo registro de cobrança",
+                                                null, saved.id(), "BILLING_RECORD"));
                             });
                 });
     }

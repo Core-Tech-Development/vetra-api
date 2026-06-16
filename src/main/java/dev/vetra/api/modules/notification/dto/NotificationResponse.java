@@ -12,6 +12,10 @@ public record NotificationResponse(
         String subject,
         String payload,
         Instant sentAt,
-        Instant createdAt
+        Instant createdAt,
+        UUID referenceId,
+        String referenceType,
+        boolean read,
+        Instant readAt
 ) {
 }

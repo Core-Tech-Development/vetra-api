@@ -13,6 +13,8 @@ public record AvailabilitySlot(
         Instant startAt,
         Instant endAt,
         SlotStatus status,
+        String label,
+        UUID recurrenceGroupId,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -20,7 +22,8 @@ public record AvailabilitySlot(
     /**
      * Factory for creating a new availability slot with AVAILABLE status.
      */
-    public static AvailabilitySlot create(UUID specialistId, Instant startAt, Instant endAt) {
+    public static AvailabilitySlot create(UUID specialistId, Instant startAt, Instant endAt,
+                                          String label, UUID recurrenceGroupId) {
         Instant now = Instant.now();
         return new AvailabilitySlot(
                 UUID.randomUUID(),
@@ -28,16 +31,27 @@ public record AvailabilitySlot(
                 startAt,
                 endAt,
                 SlotStatus.AVAILABLE,
+                label,
+                recurrenceGroupId,
                 now,
                 now
         );
     }
 
     /**
+     * Convenience factory without label/recurrence fields.
+     */
+    public static AvailabilitySlot create(UUID specialistId, Instant startAt, Instant endAt) {
+        return create(specialistId, startAt, endAt, null, null);
+    }
+
+    /**
      * Factory for restoring an availability slot from persistence.
      */
     public static AvailabilitySlot restore(UUID id, UUID specialistId, Instant startAt, Instant endAt,
-                                           SlotStatus status, Instant createdAt, Instant updatedAt) {
-        return new AvailabilitySlot(id, specialistId, startAt, endAt, status, createdAt, updatedAt);
+                                           SlotStatus status, String label, UUID recurrenceGroupId,
+                                           Instant createdAt, Instant updatedAt) {
+        return new AvailabilitySlot(id, specialistId, startAt, endAt, status, label, recurrenceGroupId,
+                createdAt, updatedAt);
     }
 }

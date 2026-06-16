@@ -50,10 +50,30 @@ public class NotificationRepository {
 
         params.addOffsetDateTime(OffsetDateTime.ofInstant(notification.createdAt(), ZoneOffset.UTC));
 
+        if (notification.referenceId() != null) {
+            params.addUUID(notification.referenceId());
+        } else {
+            params.addValue(null);
+        }
+
+        if (notification.referenceType() != null) {
+            params.addString(notification.referenceType());
+        } else {
+            params.addValue(null);
+        }
+
+        if (notification.readAt() != null) {
+            params.addOffsetDateTime(OffsetDateTime.ofInstant(notification.readAt(), ZoneOffset.UTC));
+        } else {
+            params.addValue(null);
+        }
+
         return client.preparedQuery("""
-                        INSERT INTO notification (id, recipient_user_id, channel, type, status, subject, payload, sent_at, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
-                        RETURNING id, recipient_user_id, channel, type, status, subject, payload, sent_at, created_at
+                        INSERT INTO notification (id, recipient_user_id, channel, type, status, subject, payload,
+                            sent_at, created_at, reference_id, reference_type, read_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12)
+                        RETURNING id, recipient_user_id, channel, type, status, subject, payload,
+                            sent_at, created_at, reference_id, reference_type, read_at
                         """)
                 .execute(params)
                 .map(rows -> mapRow(rows.iterator().next()));
@@ -61,7 +81,8 @@ public class NotificationRepository {
 
     public Uni<List<Notification>> findByRecipientUserId(String recipientUserId, int offset, int limit) {
         return client.preparedQuery("""
-                        SELECT id, recipient_user_id, channel, type, status, subject, payload, sent_at, created_at
+                        SELECT id, recipient_user_id, channel, type, status, subject, payload,
+                            sent_at, created_at, reference_id, reference_type, read_at
                         FROM notification
                         WHERE recipient_user_id = $1
                         ORDER BY created_at DESC
@@ -93,16 +114,47 @@ public class NotificationRepository {
                         UPDATE notification
                         SET status = $1, sent_at = $2
                         WHERE id = $3
-                        RETURNING id, recipient_user_id, channel, type, status, subject, payload, sent_at, created_at
+                        RETURNING id, recipient_user_id, channel, type, status, subject, payload,
+                            sent_at, created_at, reference_id, reference_type, read_at
                         """)
                 .execute(params)
                 .map(rows -> mapRow(rows.iterator().next()));
+    }
+
+    public Uni<Void> markAsRead(UUID id) {
+        return client.preparedQuery("""
+                        UPDATE notification
+                        SET read_at = now()
+                        WHERE id = $1 AND read_at IS NULL
+                        """)
+                .execute(Tuple.of(id))
+                .replaceWithVoid();
+    }
+
+    public Uni<Void> markAllAsRead(String recipientUserId) {
+        return client.preparedQuery("""
+                        UPDATE notification
+                        SET read_at = now()
+                        WHERE recipient_user_id = $1 AND read_at IS NULL
+                        """)
+                .execute(Tuple.of(recipientUserId))
+                .replaceWithVoid();
+    }
+
+    public Uni<Long> countUnreadByRecipientUserId(String recipientUserId) {
+        return client.preparedQuery("""
+                        SELECT count(*) AS total FROM notification
+                        WHERE recipient_user_id = $1 AND read_at IS NULL
+                        """)
+                .execute(Tuple.of(recipientUserId))
+                .map(rows -> rows.iterator().next().getLong("total"));
     }
 
     // ---- Row Mapping ----
 
     private Notification mapRow(Row row) {
         OffsetDateTime sentAtOdt = row.getOffsetDateTime("sent_at");
+        OffsetDateTime readAtOdt = row.getOffsetDateTime("read_at");
         return Notification.restore(
                 row.getUUID("id"),
                 row.getString("recipient_user_id"),
@@ -112,7 +164,10 @@ public class NotificationRepository {
                 row.getString("subject"),
                 row.getString("payload"),
                 sentAtOdt != null ? sentAtOdt.toInstant() : null,
-                row.getOffsetDateTime("created_at").toInstant()
+                row.getOffsetDateTime("created_at").toInstant(),
+                row.getUUID("reference_id"),
+                row.getString("reference_type"),
+                readAtOdt != null ? readAtOdt.toInstant() : null
         );
     }
 

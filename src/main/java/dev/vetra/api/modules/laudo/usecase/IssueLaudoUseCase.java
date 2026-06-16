@@ -5,6 +5,8 @@ import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
 import dev.vetra.api.modules.laudo.domain.Laudo;
 import dev.vetra.api.modules.laudo.domain.LaudoStatus;
 import dev.vetra.api.modules.laudo.repository.LaudoRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
 import dev.vetra.api.shared.exception.BusinessException;
@@ -31,16 +33,19 @@ public class IssueLaudoUseCase {
     private final AppointmentRepository appointmentRepository;
     private final ExamRequestRepository examRequestRepository;
     private final CreateBillingRecordUseCase createBillingRecordUseCase;
+    private final NotificationService notificationService;
 
     @Inject
     public IssueLaudoUseCase(LaudoRepository laudoRepository,
                               AppointmentRepository appointmentRepository,
                               ExamRequestRepository examRequestRepository,
-                              CreateBillingRecordUseCase createBillingRecordUseCase) {
+                              CreateBillingRecordUseCase createBillingRecordUseCase,
+                              NotificationService notificationService) {
         this.laudoRepository = laudoRepository;
         this.appointmentRepository = appointmentRepository;
         this.examRequestRepository = examRequestRepository;
         this.createBillingRecordUseCase = createBillingRecordUseCase;
+        this.notificationService = notificationService;
     }
 
     public Uni<Laudo> execute(UUID laudoId) {
@@ -83,9 +88,29 @@ public class IssueLaudoUseCase {
                                             .onFailure().recoverWithNull()
                                             .map(v -> savedLaudo)
                             )
+                            .call(savedLaudo -> notifyClinicLaudoIssued(savedLaudo))
                             .flatMap(savedLaudo -> triggerBilling(savedLaudo)
                                     .map(v -> savedLaudo));
                 });
+    }
+
+    private Uni<Void> notifyClinicLaudoIssued(Laudo laudo) {
+        return appointmentRepository.findById(laudo.appointmentId())
+                .flatMap(aptOpt -> {
+                    if (aptOpt.isEmpty()) return Uni.createFrom().voidItem();
+                    return examRequestRepository.findById(aptOpt.get().examRequestId())
+                            .flatMap(erOpt -> {
+                                if (erOpt.isEmpty()) return Uni.createFrom().voidItem();
+                                return notificationService.notifyClinicAdmins(
+                                        erOpt.get().clinicId(),
+                                        NotificationType.LAUDO_ISSUED,
+                                        "Laudo emitido",
+                                        null, laudo.id(), "LAUDO");
+                            });
+                })
+                .onFailure().invoke(err -> LOG.warnf(err, "Failed to notify clinic about laudo %s", laudo.id()))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
 
     private Uni<Void> triggerBilling(Laudo laudo) {

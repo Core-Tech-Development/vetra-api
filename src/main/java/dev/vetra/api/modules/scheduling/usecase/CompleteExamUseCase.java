@@ -1,5 +1,7 @@
 package dev.vetra.api.modules.scheduling.usecase;
 
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
@@ -25,12 +27,15 @@ public class CompleteExamUseCase {
 
     private final AppointmentRepository appointmentRepository;
     private final AppointmentOwnershipValidator ownershipValidator;
+    private final NotificationService notificationService;
 
     @Inject
     public CompleteExamUseCase(AppointmentRepository appointmentRepository,
-                               AppointmentOwnershipValidator ownershipValidator) {
+                               AppointmentOwnershipValidator ownershipValidator,
+                               NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.ownershipValidator = ownershipValidator;
+        this.notificationService = notificationService;
     }
 
     public Uni<Appointment> execute(UUID id, String callerUserId, Set<String> callerRoles) {
@@ -47,7 +52,12 @@ public class CompleteExamUseCase {
                     }
                     LOG.infof("Exam completed, appointment awaiting report: id=%s", id);
                     Appointment updated = appointment.withActualEnd(Instant.now(), AppointmentStatus.WAITING_REPORT);
-                    return appointmentRepository.update(updated);
+                    return appointmentRepository.update(updated)
+                            .call(saved -> notificationService.notifySpecialist(
+                                    saved.specialistId(),
+                                    NotificationType.EXAM_COMPLETED,
+                                    "Exame concluído — emita o laudo",
+                                    null, saved.id(), "APPOINTMENT"));
                 });
     }
 }

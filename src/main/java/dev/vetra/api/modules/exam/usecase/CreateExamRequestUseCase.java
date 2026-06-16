@@ -4,6 +4,8 @@ import dev.vetra.api.modules.exam.domain.ExamRequest;
 import dev.vetra.api.modules.exam.dto.CreateExamRequestRequest;
 import dev.vetra.api.modules.exam.dto.ExamRequestMapper;
 import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.patient.repository.PatientRepository;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
@@ -24,12 +26,15 @@ public class CreateExamRequestUseCase {
 
     private final ExamRequestRepository examRequestRepository;
     private final PatientRepository patientRepository;
+    private final NotificationService notificationService;
 
     @Inject
     public CreateExamRequestUseCase(ExamRequestRepository examRequestRepository,
-                                    PatientRepository patientRepository) {
+                                    PatientRepository patientRepository,
+                                    NotificationService notificationService) {
         this.examRequestRepository = examRequestRepository;
         this.patientRepository = patientRepository;
+        this.notificationService = notificationService;
     }
 
     public Uni<ExamRequest> execute(UUID clinicId, CreateExamRequestRequest request, String requestedBy) {
@@ -42,7 +47,11 @@ public class CreateExamRequestUseCase {
                     ExamRequest examRequest = ExamRequestMapper.toDomain(clinicId, request, requestedBy);
                     LOG.infof("Creating exam request: id=%s, clinicId=%s, patientId=%s, requestedBy=%s",
                             examRequest.id(), clinicId, request.patientId(), requestedBy);
-                    return examRequestRepository.save(examRequest);
+                    return examRequestRepository.save(examRequest)
+                            .call(saved -> notificationService.notifyAllActiveSpecialists(
+                                    NotificationType.EXAM_REQUEST_CREATED,
+                                    "Nova solicitação de exame",
+                                    null, saved.id(), "EXAM_REQUEST"));
                 });
     }
 }

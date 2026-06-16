@@ -1,5 +1,7 @@
 package dev.vetra.api.modules.scheduling.usecase;
 
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
@@ -23,10 +25,13 @@ public class CompleteAppointmentUseCase {
     private static final Logger LOG = Logger.getLogger(CompleteAppointmentUseCase.class);
 
     private final AppointmentRepository appointmentRepository;
+    private final NotificationService notificationService;
 
     @Inject
-    public CompleteAppointmentUseCase(AppointmentRepository appointmentRepository) {
+    public CompleteAppointmentUseCase(AppointmentRepository appointmentRepository,
+                                      NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
+        this.notificationService = notificationService;
     }
 
     public Uni<Appointment> execute(UUID id) {
@@ -41,7 +46,12 @@ public class CompleteAppointmentUseCase {
                     }
                     LOG.infof("Completing appointment: id=%s", id);
                     Appointment updated = appointment.withStatus(AppointmentStatus.COMPLETED);
-                    return appointmentRepository.update(updated);
+                    return appointmentRepository.update(updated)
+                            .call(saved -> notificationService.notifySpecialist(
+                                    saved.specialistId(),
+                                    NotificationType.APPOINTMENT_COMPLETED,
+                                    "Atendimento concluído",
+                                    null, saved.id(), "APPOINTMENT"));
                 });
     }
 }

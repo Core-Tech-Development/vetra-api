@@ -1,5 +1,8 @@
 package dev.vetra.api.modules.scheduling.usecase;
 
+import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
@@ -25,12 +28,18 @@ public class StartServiceUseCase {
 
     private final AppointmentRepository appointmentRepository;
     private final AppointmentOwnershipValidator ownershipValidator;
+    private final ExamRequestRepository examRequestRepository;
+    private final NotificationService notificationService;
 
     @Inject
     public StartServiceUseCase(AppointmentRepository appointmentRepository,
-                               AppointmentOwnershipValidator ownershipValidator) {
+                               AppointmentOwnershipValidator ownershipValidator,
+                               ExamRequestRepository examRequestRepository,
+                               NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.ownershipValidator = ownershipValidator;
+        this.examRequestRepository = examRequestRepository;
+        this.notificationService = notificationService;
     }
 
     public Uni<Appointment> execute(UUID id, String callerUserId, Set<String> callerRoles) {
@@ -47,7 +56,16 @@ public class StartServiceUseCase {
                     }
                     LOG.infof("Starting service for appointment: id=%s", id);
                     Appointment updated = appointment.withActualStart(Instant.now(), AppointmentStatus.IN_SERVICE);
-                    return appointmentRepository.update(updated);
+                    return appointmentRepository.update(updated)
+                            .call(saved -> examRequestRepository.findById(saved.examRequestId())
+                                    .flatMap(erOpt -> {
+                                        if (erOpt.isEmpty()) return Uni.createFrom().voidItem();
+                                        return notificationService.notifyClinicAdmins(
+                                                erOpt.get().clinicId(),
+                                                NotificationType.EXAM_IN_SERVICE,
+                                                "Exame em andamento",
+                                                null, saved.id(), "APPOINTMENT");
+                                    }));
                 });
     }
 }

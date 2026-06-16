@@ -2,6 +2,8 @@ package dev.vetra.api.modules.scheduling.usecase;
 
 import dev.vetra.api.modules.exam.domain.ExamRequestStatus;
 import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
@@ -27,14 +29,17 @@ public class AcceptAppointmentUseCase {
     private final AppointmentRepository appointmentRepository;
     private final ExamRequestRepository examRequestRepository;
     private final AppointmentOwnershipValidator ownershipValidator;
+    private final NotificationService notificationService;
 
     @Inject
     public AcceptAppointmentUseCase(AppointmentRepository appointmentRepository,
                                     ExamRequestRepository examRequestRepository,
-                                    AppointmentOwnershipValidator ownershipValidator) {
+                                    AppointmentOwnershipValidator ownershipValidator,
+                                    NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.examRequestRepository = examRequestRepository;
         this.ownershipValidator = ownershipValidator;
+        this.notificationService = notificationService;
     }
 
     public Uni<Appointment> execute(UUID id, String callerUserId, Set<String> callerRoles) {
@@ -54,7 +59,16 @@ public class AcceptAppointmentUseCase {
                     return appointmentRepository.update(updated)
                             .flatMap(saved -> examRequestRepository.updateStatus(
                                             saved.examRequestId(), ExamRequestStatus.SPECIALIST_ASSIGNED)
-                                    .replaceWith(saved));
+                                    .replaceWith(saved))
+                            .call(saved -> examRequestRepository.findById(saved.examRequestId())
+                                    .flatMap(erOpt -> {
+                                        if (erOpt.isEmpty()) return Uni.createFrom().voidItem();
+                                        return notificationService.notifyClinicAdmins(
+                                                erOpt.get().clinicId(),
+                                                NotificationType.APPOINTMENT_ACCEPTED,
+                                                "Agendamento aceito pelo especialista",
+                                                null, saved.id(), "APPOINTMENT");
+                                    }));
                 });
     }
 }

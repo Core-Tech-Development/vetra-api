@@ -18,7 +18,9 @@ public final class SlotMapper {
         return AvailabilitySlot.create(
                 specialistId,
                 request.startAt(),
-                request.endAt()
+                request.endAt(),
+                request.label(),
+                null
         );
     }
 
@@ -29,6 +31,8 @@ public final class SlotMapper {
                 slot.startAt(),
                 slot.endAt(),
                 slot.status().name(),
+                slot.label(),
+                slot.recurrenceGroupId(),
                 slot.createdAt(),
                 slot.updatedAt()
         );

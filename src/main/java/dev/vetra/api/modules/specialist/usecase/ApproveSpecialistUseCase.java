@@ -1,5 +1,7 @@
 package dev.vetra.api.modules.specialist.usecase;
 
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.specialist.domain.Specialist;
 import dev.vetra.api.modules.specialist.domain.SpecialistStatus;
 import dev.vetra.api.modules.specialist.repository.SpecialistRepository;
@@ -25,12 +27,15 @@ public class ApproveSpecialistUseCase {
 
     private final SpecialistRepository specialistRepository;
     private final CachedSpecialistService cachedSpecialistService;
+    private final NotificationService notificationService;
 
     @Inject
     public ApproveSpecialistUseCase(SpecialistRepository specialistRepository,
-                                     CachedSpecialistService cachedSpecialistService) {
+                                     CachedSpecialistService cachedSpecialistService,
+                                     NotificationService notificationService) {
         this.specialistRepository = specialistRepository;
         this.cachedSpecialistService = cachedSpecialistService;
+        this.notificationService = notificationService;
     }
 
     public Uni<Specialist> execute(UUID id) {
@@ -70,7 +75,12 @@ public class ApproveSpecialistUseCase {
 
                     LOG.infof("Approving specialist: id=%s", id);
                     return specialistRepository.update(approved)
-                            .call(result -> cachedSpecialistService.invalidate(result.id()));
+                            .call(result -> cachedSpecialistService.invalidate(result.id()))
+                            .call(result -> notificationService.notifySpecialist(
+                                    result.id(),
+                                    NotificationType.SPECIALIST_APPROVED,
+                                    "Cadastro aprovado na plataforma",
+                                    null, result.id(), "SPECIALIST"));
                 });
     }
 }

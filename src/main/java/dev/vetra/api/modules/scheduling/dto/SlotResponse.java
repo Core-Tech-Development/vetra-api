@@ -9,6 +9,8 @@ public record SlotResponse(
         Instant startAt,
         Instant endAt,
         String status,
+        String label,
+        UUID recurrenceGroupId,
         Instant createdAt,
         Instant updatedAt
 ) {

@@ -113,6 +113,22 @@ public class ClinicStaffRepository {
                 .replaceWithVoid();
     }
 
+    public Uni<List<String>> findAdminUserIdsByClinicId(UUID clinicId) {
+        return client.preparedQuery("""
+                        SELECT user_id FROM clinic_staff
+                        WHERE clinic_id = $1 AND status = 'ACTIVE'
+                        """)
+                .execute(Tuple.of(clinicId))
+                .map(rows -> {
+                    List<String> ids = new ArrayList<>();
+                    for (Row row : rows) {
+                        String uid = row.getString("user_id");
+                        if (uid != null) ids.add(uid);
+                    }
+                    return ids;
+                });
+    }
+
     // ---- Row Mapping ----
 
     private ClinicStaff mapRow(Row row) {

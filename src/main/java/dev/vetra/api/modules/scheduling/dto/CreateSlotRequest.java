@@ -10,6 +10,8 @@ public record CreateSlotRequest(
         Instant startAt,
 
         @NotNull(message = "End time is required")
-        Instant endAt
+        Instant endAt,
+
+        String label
 ) {
 }

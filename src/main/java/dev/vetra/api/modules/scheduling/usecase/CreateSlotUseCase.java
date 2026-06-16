@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /**
  * Creates a new availability slot for a specialist.
- * Validates that endAt is after startAt.
+ * Validates that endAt is after startAt and checks for overlapping slots.
  */
 @ApplicationScoped
 public class CreateSlotUseCase {
@@ -35,9 +35,17 @@ public class CreateSlotUseCase {
             );
         }
 
-        AvailabilitySlot slot = SlotMapper.toDomain(specialistId, request);
-        LOG.infof("Creating availability slot: id=%s, specialistId=%s, startAt=%s, endAt=%s",
-                slot.id(), specialistId, request.startAt(), request.endAt());
-        return slotRepository.save(slot);
+        return slotRepository.hasOverlappingSlot(specialistId, request.startAt(), request.endAt())
+                .flatMap(hasOverlap -> {
+                    if (hasOverlap) {
+                        return Uni.createFrom().failure(
+                                new BusinessException("SLOT_OVERLAP", "This time range overlaps with an existing slot")
+                        );
+                    }
+                    AvailabilitySlot slot = SlotMapper.toDomain(specialistId, request);
+                    LOG.infof("Creating availability slot: id=%s, specialistId=%s, startAt=%s, endAt=%s",
+                            slot.id(), specialistId, request.startAt(), request.endAt());
+                    return slotRepository.save(slot);
+                });
     }
 }

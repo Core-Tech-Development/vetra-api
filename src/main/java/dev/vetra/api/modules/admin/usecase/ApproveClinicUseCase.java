@@ -3,6 +3,8 @@ package dev.vetra.api.modules.admin.usecase;
 import dev.vetra.api.modules.clinic.domain.Clinic;
 import dev.vetra.api.modules.clinic.domain.ClinicStatus;
 import dev.vetra.api.modules.clinic.repository.ClinicRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.shared.exception.BusinessException;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
@@ -23,10 +25,13 @@ public class ApproveClinicUseCase {
     private static final Logger LOG = Logger.getLogger(ApproveClinicUseCase.class);
 
     private final ClinicRepository clinicRepository;
+    private final NotificationService notificationService;
 
     @Inject
-    public ApproveClinicUseCase(ClinicRepository clinicRepository) {
+    public ApproveClinicUseCase(ClinicRepository clinicRepository,
+                                 NotificationService notificationService) {
         this.clinicRepository = clinicRepository;
+        this.notificationService = notificationService;
     }
 
     public Uni<Clinic> execute(UUID id) {
@@ -46,7 +51,12 @@ public class ApproveClinicUseCase {
                             ClinicStatus.ACTIVE, clinic.createdAt(), Instant.now());
 
                     LOG.infof("Approving clinic: id=%s", id);
-                    return clinicRepository.update(approved);
+                    return clinicRepository.update(approved)
+                            .call(saved -> notificationService.notifyClinicAdmins(
+                                    saved.id(),
+                                    NotificationType.CLINIC_APPROVED,
+                                    "Clínica aprovada na plataforma",
+                                    null, saved.id(), "CLINIC"));
                 });
     }
 }

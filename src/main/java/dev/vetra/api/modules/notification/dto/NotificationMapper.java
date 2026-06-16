@@ -22,7 +22,11 @@ public final class NotificationMapper {
                 notification.subject(),
                 notification.payload(),
                 notification.sentAt(),
-                notification.createdAt()
+                notification.createdAt(),
+                notification.referenceId(),
+                notification.referenceType(),
+                notification.readAt() != null,
+                notification.readAt()
         );
     }
 }

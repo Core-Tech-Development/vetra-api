@@ -13,6 +13,7 @@ public record CreateAppointmentRequest(
         @NotNull(message = "Specialist ID is required")
         UUID specialistId,
 
+        @NotNull(message = "Availability slot ID is required")
         UUID availabilitySlotId,
 
         Instant scheduledStartAt,

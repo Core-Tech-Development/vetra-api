@@ -2,6 +2,8 @@ package dev.vetra.api.modules.scheduling.usecase;
 
 import dev.vetra.api.modules.exam.domain.ExamRequestStatus;
 import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.domain.SlotStatus;
@@ -29,14 +31,17 @@ public class CancelAppointmentUseCase {
     private final AppointmentRepository appointmentRepository;
     private final AvailabilitySlotRepository slotRepository;
     private final ExamRequestRepository examRequestRepository;
+    private final NotificationService notificationService;
 
     @Inject
     public CancelAppointmentUseCase(AppointmentRepository appointmentRepository,
                                     AvailabilitySlotRepository slotRepository,
-                                    ExamRequestRepository examRequestRepository) {
+                                    ExamRequestRepository examRequestRepository,
+                                    NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.slotRepository = slotRepository;
         this.examRequestRepository = examRequestRepository;
+        this.notificationService = notificationService;
     }
 
     public Uni<Appointment> execute(UUID id, String reason) {
@@ -65,7 +70,22 @@ public class CancelAppointmentUseCase {
                                             .replaceWith(saved);
                                 }
                                 return Uni.createFrom().item(saved);
-                            });
+                            })
+                            .call(saved -> examRequestRepository.findById(saved.examRequestId())
+                                    .flatMap(erOpt -> {
+                                        if (erOpt.isEmpty()) return Uni.createFrom().voidItem();
+                                        Uni<Void> notifyClinic = notificationService.notifyClinicAdmins(
+                                                erOpt.get().clinicId(),
+                                                NotificationType.APPOINTMENT_CANCELLED,
+                                                "Agendamento cancelado",
+                                                null, saved.id(), "APPOINTMENT");
+                                        Uni<Void> notifySpec = notificationService.notifySpecialist(
+                                                saved.specialistId(),
+                                                NotificationType.APPOINTMENT_CANCELLED,
+                                                "Agendamento cancelado",
+                                                null, saved.id(), "APPOINTMENT");
+                                        return Uni.join().all(notifyClinic, notifySpec).andFailFast().replaceWithVoid();
+                                    }));
                 });
     }
 

@@ -2,6 +2,8 @@ package dev.vetra.api.modules.scheduling.usecase;
 
 import dev.vetra.api.modules.exam.domain.ExamRequestStatus;
 import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.domain.SlotStatus;
@@ -31,16 +33,19 @@ public class DeclineAppointmentUseCase {
     private final AvailabilitySlotRepository slotRepository;
     private final ExamRequestRepository examRequestRepository;
     private final AppointmentOwnershipValidator ownershipValidator;
+    private final NotificationService notificationService;
 
     @Inject
     public DeclineAppointmentUseCase(AppointmentRepository appointmentRepository,
                                      AvailabilitySlotRepository slotRepository,
                                      ExamRequestRepository examRequestRepository,
-                                     AppointmentOwnershipValidator ownershipValidator) {
+                                     AppointmentOwnershipValidator ownershipValidator,
+                                     NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.slotRepository = slotRepository;
         this.examRequestRepository = examRequestRepository;
         this.ownershipValidator = ownershipValidator;
+        this.notificationService = notificationService;
     }
 
     public Uni<Appointment> execute(UUID id, String reason, String callerUserId, Set<String> callerRoles) {
@@ -71,7 +76,16 @@ public class DeclineAppointmentUseCase {
                                 return examRequestRepository.updateStatus(
                                                 saved.examRequestId(), ExamRequestStatus.CREATED)
                                         .replaceWith(saved);
-                            });
+                            })
+                            .call(saved -> examRequestRepository.findById(saved.examRequestId())
+                                    .flatMap(erOpt -> {
+                                        if (erOpt.isEmpty()) return Uni.createFrom().voidItem();
+                                        return notificationService.notifyClinicAdmins(
+                                                erOpt.get().clinicId(),
+                                                NotificationType.APPOINTMENT_DECLINED,
+                                                "Agendamento recusado pelo especialista",
+                                                null, saved.id(), "APPOINTMENT");
+                                    }));
                 });
     }
 

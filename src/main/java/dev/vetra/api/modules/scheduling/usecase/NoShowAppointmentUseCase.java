@@ -1,5 +1,8 @@
 package dev.vetra.api.modules.scheduling.usecase;
 
+import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
+import dev.vetra.api.modules.notification.domain.NotificationType;
+import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.domain.SlotStatus;
@@ -26,12 +29,18 @@ public class NoShowAppointmentUseCase {
 
     private final AppointmentRepository appointmentRepository;
     private final AvailabilitySlotRepository slotRepository;
+    private final ExamRequestRepository examRequestRepository;
+    private final NotificationService notificationService;
 
     @Inject
     public NoShowAppointmentUseCase(AppointmentRepository appointmentRepository,
-                                    AvailabilitySlotRepository slotRepository) {
+                                    AvailabilitySlotRepository slotRepository,
+                                    ExamRequestRepository examRequestRepository,
+                                    NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.slotRepository = slotRepository;
+        this.examRequestRepository = examRequestRepository;
+        this.notificationService = notificationService;
     }
 
     public Uni<Appointment> execute(UUID id) {
@@ -48,7 +57,22 @@ public class NoShowAppointmentUseCase {
                     Appointment updated = appointment.withStatus(AppointmentStatus.NO_SHOW);
 
                     Uni<Void> freeSlotUni = freeSlotIfReserved(appointment);
-                    return freeSlotUni.flatMap(ignored -> appointmentRepository.update(updated));
+                    return freeSlotUni.flatMap(ignored -> appointmentRepository.update(updated))
+                            .call(saved -> examRequestRepository.findById(saved.examRequestId())
+                                    .flatMap(erOpt -> {
+                                        if (erOpt.isEmpty()) return Uni.createFrom().voidItem();
+                                        Uni<Void> notifyClinic = notificationService.notifyClinicAdmins(
+                                                erOpt.get().clinicId(),
+                                                NotificationType.APPOINTMENT_NO_SHOW,
+                                                "Paciente não compareceu",
+                                                null, saved.id(), "APPOINTMENT");
+                                        Uni<Void> notifySpec = notificationService.notifySpecialist(
+                                                saved.specialistId(),
+                                                NotificationType.APPOINTMENT_NO_SHOW,
+                                                "Paciente não compareceu",
+                                                null, saved.id(), "APPOINTMENT");
+                                        return Uni.join().all(notifyClinic, notifySpec).andFailFast().replaceWithVoid();
+                                    }));
                 });
     }
 

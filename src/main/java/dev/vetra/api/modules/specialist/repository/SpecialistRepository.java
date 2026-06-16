@@ -170,6 +170,20 @@ public class SpecialistRepository {
                 .map(this::mapList);
     }
 
+    public Uni<List<UUID>> findActiveSpecialistIds() {
+        return client.preparedQuery("""
+                        SELECT id FROM specialist WHERE status = 'ACTIVE'
+                        """)
+                .execute(Tuple.tuple())
+                .map(rows -> {
+                    List<UUID> ids = new ArrayList<>();
+                    for (Row row : rows) {
+                        ids.add(row.getUUID("id"));
+                    }
+                    return ids;
+                });
+    }
+
     public Uni<List<Specialist>> searchAvailable(String city, String state, String specialty) {
         if (specialty != null && !specialty.isBlank()) {
             return client.preparedQuery("""
