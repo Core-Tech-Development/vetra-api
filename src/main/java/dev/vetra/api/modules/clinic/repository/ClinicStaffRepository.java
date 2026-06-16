@@ -60,6 +60,16 @@ public class ClinicStaffRepository {
                 .map(this::mapOptional);
     }
 
+    public Uni<Optional<ClinicStaff>> findByUserId(String userId) {
+        return client.preparedQuery("""
+                        SELECT id, clinic_id, user_id, name, email, phone, role, status, created_at, updated_at
+                        FROM clinic_staff
+                        WHERE user_id = $1
+                        """)
+                .execute(Tuple.of(userId))
+                .map(this::mapOptional);
+    }
+
     public Uni<Optional<ClinicStaff>> findByEmail(String email) {
         return client.preparedQuery("""
                         SELECT id, clinic_id, user_id, name, email, phone, role, status, created_at, updated_at
