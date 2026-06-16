@@ -3,6 +3,7 @@ package dev.vetra.api.modules.specialist.usecase;
 import dev.vetra.api.modules.specialist.domain.Specialist;
 import dev.vetra.api.modules.specialist.domain.SpecialistStatus;
 import dev.vetra.api.modules.specialist.repository.SpecialistRepository;
+import dev.vetra.api.modules.specialist.service.CachedSpecialistService;
 import dev.vetra.api.shared.exception.BusinessException;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
@@ -23,10 +24,13 @@ public class ApproveSpecialistUseCase {
     private static final Logger LOG = Logger.getLogger(ApproveSpecialistUseCase.class);
 
     private final SpecialistRepository specialistRepository;
+    private final CachedSpecialistService cachedSpecialistService;
 
     @Inject
-    public ApproveSpecialistUseCase(SpecialistRepository specialistRepository) {
+    public ApproveSpecialistUseCase(SpecialistRepository specialistRepository,
+                                     CachedSpecialistService cachedSpecialistService) {
         this.specialistRepository = specialistRepository;
+        this.cachedSpecialistService = cachedSpecialistService;
     }
 
     public Uni<Specialist> execute(UUID id) {
@@ -65,7 +69,8 @@ public class ApproveSpecialistUseCase {
                     );
 
                     LOG.infof("Approving specialist: id=%s", id);
-                    return specialistRepository.update(approved);
+                    return specialistRepository.update(approved)
+                            .call(result -> cachedSpecialistService.invalidate(result.id()));
                 });
     }
 }

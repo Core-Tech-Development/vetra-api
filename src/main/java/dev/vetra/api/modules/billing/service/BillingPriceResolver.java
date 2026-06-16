@@ -1,7 +1,5 @@
 package dev.vetra.api.modules.billing.service;
 
-import dev.vetra.api.modules.billing.repository.ExamTypePricingRepository;
-import dev.vetra.api.modules.billing.repository.SpecialistPricingRepository;
 import dev.vetra.api.shared.exception.BusinessException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -17,22 +15,19 @@ public class BillingPriceResolver {
 
     private static final Logger LOG = Logger.getLogger(BillingPriceResolver.class);
 
-    private final SpecialistPricingRepository specialistPricingRepository;
-    private final ExamTypePricingRepository examTypePricingRepository;
+    private final CachedPricingService cachedPricingService;
 
     @Inject
-    public BillingPriceResolver(SpecialistPricingRepository specialistPricingRepository,
-                                 ExamTypePricingRepository examTypePricingRepository) {
-        this.specialistPricingRepository = specialistPricingRepository;
-        this.examTypePricingRepository = examTypePricingRepository;
+    public BillingPriceResolver(CachedPricingService cachedPricingService) {
+        this.cachedPricingService = cachedPricingService;
     }
 
     public Uni<PriceResult> resolvePrice(UUID specialistId, String examType) {
-        return specialistPricingRepository.findBySpecialistIdAndExamType(specialistId, examType)
+        return cachedPricingService.findBySpecialistIdAndExamType(specialistId, examType)
                 .flatMap(specialistOpt -> {
                     if (specialistOpt.isPresent()) {
                         var sp = specialistOpt.get();
-                        return examTypePricingRepository.findByExamType(examType)
+                        return cachedPricingService.findByExamType(examType)
                                 .map(examOpt -> {
                                     BigDecimal feePercent = examOpt.map(e -> e.platformFeePercent())
                                             .orElse(BigDecimal.valueOf(12));
@@ -40,7 +35,7 @@ public class BillingPriceResolver {
                                     return new PriceResult(sp.priceCents(), platformFeeCents, feePercent);
                                 });
                     }
-                    return examTypePricingRepository.findByExamType(examType)
+                    return cachedPricingService.findByExamType(examType)
                             .map(examOpt -> {
                                 if (examOpt.isEmpty()) {
                                     throw new BusinessException("NO_PRICING_CONFIGURED",

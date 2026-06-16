@@ -2,6 +2,7 @@ package dev.vetra.api.modules.billing.usecase;
 
 import dev.vetra.api.modules.billing.domain.ExamTypePricing;
 import dev.vetra.api.modules.billing.repository.ExamTypePricingRepository;
+import dev.vetra.api.modules.billing.service.CachedPricingService;
 import dev.vetra.api.shared.exception.BusinessException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -15,10 +16,13 @@ public class CreateExamTypePricingUseCase {
 
     private static final Logger LOG = Logger.getLogger(CreateExamTypePricingUseCase.class);
     private final ExamTypePricingRepository repository;
+    private final CachedPricingService cachedPricingService;
 
     @Inject
-    public CreateExamTypePricingUseCase(ExamTypePricingRepository repository) {
+    public CreateExamTypePricingUseCase(ExamTypePricingRepository repository,
+                                         CachedPricingService cachedPricingService) {
         this.repository = repository;
+        this.cachedPricingService = cachedPricingService;
     }
 
     public Uni<ExamTypePricing> execute(String examType, long priceCents, BigDecimal platformFeePercent) {
@@ -31,6 +35,7 @@ public class CreateExamTypePricingUseCase {
 
         ExamTypePricing pricing = ExamTypePricing.create(examType, priceCents, platformFeePercent);
         LOG.infof("Creating exam type pricing: type=%s, price=%d, fee=%.2f%%", examType, priceCents, platformFeePercent);
-        return repository.save(pricing);
+        return repository.save(pricing)
+                .call(result -> cachedPricingService.invalidateExamTypePricing());
     }
 }

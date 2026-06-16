@@ -119,6 +119,12 @@
             <artifactId>quarkus-scheduler</artifactId>
         </dependency>
 
+        <!-- Reactive Redis Client (Vert.x) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-redis-client</artifactId>
+        </dependency>
+
         <!-- MinIO S3-compatible Object Storage -->
         <dependency>
             <groupId>io.minio</groupId>

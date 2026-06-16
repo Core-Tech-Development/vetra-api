@@ -2,6 +2,7 @@ package dev.vetra.api.modules.billing.usecase;
 
 import dev.vetra.api.modules.billing.domain.SpecialistPricing;
 import dev.vetra.api.modules.billing.repository.SpecialistPricingRepository;
+import dev.vetra.api.modules.billing.service.CachedPricingService;
 import dev.vetra.api.shared.exception.BusinessException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -15,10 +16,13 @@ public class CreateSpecialistPricingUseCase {
 
     private static final Logger LOG = Logger.getLogger(CreateSpecialistPricingUseCase.class);
     private final SpecialistPricingRepository repository;
+    private final CachedPricingService cachedPricingService;
 
     @Inject
-    public CreateSpecialistPricingUseCase(SpecialistPricingRepository repository) {
+    public CreateSpecialistPricingUseCase(SpecialistPricingRepository repository,
+                                           CachedPricingService cachedPricingService) {
         this.repository = repository;
+        this.cachedPricingService = cachedPricingService;
     }
 
     public Uni<SpecialistPricing> execute(UUID specialistId, String examType, long priceCents) {
@@ -28,6 +32,7 @@ public class CreateSpecialistPricingUseCase {
 
         SpecialistPricing pricing = SpecialistPricing.create(specialistId, examType, priceCents);
         LOG.infof("Creating specialist pricing: specialist=%s, exam=%s, price=%d", specialistId, examType, priceCents);
-        return repository.save(pricing);
+        return repository.save(pricing)
+                .call(result -> cachedPricingService.invalidateSpecialistPricing(result.specialistId()));
     }
 }

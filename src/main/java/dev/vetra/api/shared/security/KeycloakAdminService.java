@@ -1,5 +1,9 @@
 package dev.vetra.api.shared.security;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import dev.vetra.api.shared.cache.CacheKeys;
+import dev.vetra.api.shared.cache.CacheTtl;
+import dev.vetra.api.shared.cache.ReactiveCacheService;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -25,7 +29,11 @@ public class KeycloakAdminService {
 
     private static final Logger LOG = Logger.getLogger(KeycloakAdminService.class);
 
+    private static final TypeReference<String> STRING_REF = new TypeReference<>() {};
+
     private final Vertx vertx;
+    private final ReactiveCacheService cache;
+    private final CacheTtl ttl;
 
     @ConfigProperty(name = "vetra.keycloak.admin-url", defaultValue = "http://keycloak:8080")
     String keycloakUrl;
@@ -42,8 +50,10 @@ public class KeycloakAdminService {
     private WebClient webClient;
 
     @Inject
-    public KeycloakAdminService(Vertx vertx) {
+    public KeycloakAdminService(Vertx vertx, ReactiveCacheService cache, CacheTtl ttl) {
         this.vertx = vertx;
+        this.cache = cache;
+        this.ttl = ttl;
     }
 
     @PostConstruct
@@ -70,6 +80,14 @@ public class KeycloakAdminService {
     }
 
     private Uni<String> getAdminToken() {
+        return cache.getOrLoad(
+                CacheKeys.keycloakAdminToken(),
+                ttl.keycloakToken(),
+                STRING_REF,
+                fetchAdminTokenFromKeycloak());
+    }
+
+    private Uni<String> fetchAdminTokenFromKeycloak() {
         String tokenUrl = keycloakUrl + "/realms/master/protocol/openid-connect/token";
 
         String body = "client_id=admin-cli"
