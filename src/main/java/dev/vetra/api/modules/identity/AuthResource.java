@@ -1,6 +1,9 @@
 package dev.vetra.api.modules.identity;
 
+import dev.vetra.api.modules.identity.dto.ChangePasswordRequest;
+import dev.vetra.api.modules.identity.usecase.ChangePasswordUseCase;
 import io.quarkus.runtime.annotations.RegisterForReflection;
+import io.quarkus.security.Authenticated;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -43,6 +46,7 @@ public class AuthResource {
     private final CaptchaService captchaService;
     private final SesEmailService sesEmailService;
     private final PasswordResetTokenService tokenService;
+    private final ChangePasswordUseCase changePasswordUseCase;
     private final Vertx vertx;
 
     @ConfigProperty(name = "vetra.keycloak.admin-url", defaultValue = "http://keycloak:8080")
@@ -67,10 +71,12 @@ public class AuthResource {
 
     @Inject
     public AuthResource(CaptchaService captchaService, SesEmailService sesEmailService,
-                        PasswordResetTokenService tokenService, Vertx vertx) {
+                        PasswordResetTokenService tokenService, ChangePasswordUseCase changePasswordUseCase,
+                        Vertx vertx) {
         this.captchaService = captchaService;
         this.sesEmailService = sesEmailService;
         this.tokenService = tokenService;
+        this.changePasswordUseCase = changePasswordUseCase;
         this.vertx = vertx;
     }
 
@@ -253,6 +259,22 @@ public class AuthResource {
                                     "Failed to reset password. Please try again."))
                             .build();
                 });
+    }
+
+    // ── Change Password (authenticated) ────────────────────────────────────────
+
+    @POST
+    @Path("/change-password")
+    @Authenticated
+    @Operation(summary = "Change password for authenticated user")
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "Password changed successfully"),
+            @APIResponse(responseCode = "400", description = "Invalid current password or validation error"),
+            @APIResponse(responseCode = "401", description = "Not authenticated")
+    })
+    public Uni<Response> changePassword(@Valid ChangePasswordRequest request) {
+        return changePasswordUseCase.execute(request)
+                .replaceWith(Response.noContent().build());
     }
 
     // ── Keycloak Admin helpers ──────────────────────────────────────────────────
