@@ -65,7 +65,7 @@ public class RetryPendingPaymentsUseCase {
                     LOG.infof("Retrying %d pending billing records", records.size());
 
                     return Multi.createFrom().iterable(records)
-                            .onItem().transformToUniAndConcatenate(record -> {
+                            .onItem().transformToUni(record -> {
                                 if (record.createdAt().isBefore(cutoff)) {
                                     LOG.warnf("Billing %s exceeded retry window, marking FAILED", record.id());
                                     return billingRecordRepository.update(
@@ -76,7 +76,7 @@ public class RetryPendingPaymentsUseCase {
                                 return retryPayment(record)
                                         .onFailure().recoverWithNull()
                                         .replaceWithVoid();
-                            })
+                            }).merge(10)
                             .collect().asList()
                             .replaceWithVoid();
                 });

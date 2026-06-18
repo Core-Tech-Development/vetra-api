@@ -11,6 +11,10 @@ import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Fallback;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 import java.net.URI;
@@ -56,6 +60,15 @@ public class SesEmailService {
         this.webClient = WebClient.create(vertx, options);
     }
 
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 30000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 2, delay = 1000)
+    @Timeout(10000)
+    @Fallback(fallbackMethod = "sendEmailFallback")
     public Uni<Void> sendEmail(String to, String subject, String htmlBody, String textBody) {
         if (!emailEnabled || accessKeyId.isEmpty() || secretAccessKey.isEmpty()) {
             LOG.warnf("Email not configured. Would have sent to: %s, subject: %s", to, subject);
@@ -104,5 +117,14 @@ public class SesEmailService {
                     }
                     return null;
                 });
+    }
+
+    /**
+     * Fallback when email delivery fails (circuit open, timeout, or retries exhausted).
+     * Logs the failure but does not throw, so the calling use case can continue.
+     */
+    Uni<Void> sendEmailFallback(String to, String subject, String htmlBody, String textBody) {
+        LOG.warnf("Email delivery failed (circuit open or timeout), skipping email to %s: %s", to, subject);
+        return Uni.createFrom().voidItem();
     }
 }

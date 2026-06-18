@@ -13,6 +13,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 import java.net.URLEncoder;
@@ -82,7 +83,8 @@ public class ChangePasswordUseCase {
      * grant against the Keycloak token endpoint. If Keycloak returns a non-200 status,
      * the current password is invalid.
      */
-    private Uni<Void> verifyCurrentPassword(String email, String currentPassword) {
+    @Timeout(8000)
+    Uni<Void> verifyCurrentPassword(String email, String currentPassword) {
         String tokenUrl = keycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
 
         String body = "grant_type=password"

@@ -16,6 +16,9 @@ import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 import java.util.List;
@@ -87,7 +90,15 @@ public class KeycloakAdminService {
                 fetchAdminTokenFromKeycloak());
     }
 
-    private Uni<String> fetchAdminTokenFromKeycloak() {
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 30000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 2, delay = 500, jitter = 200)
+    @Timeout(5000)
+    Uni<String> fetchAdminTokenFromKeycloak() {
         String tokenUrl = keycloakUrl + "/realms/master/protocol/openid-connect/token";
 
         String body = "client_id=admin-cli"
@@ -106,7 +117,15 @@ public class KeycloakAdminService {
                 });
     }
 
-    private Uni<JsonObject> createKeycloakUser(String token, String email, String fullName) {
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 30000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 1, delay = 1000)
+    @Timeout(10000)
+    Uni<JsonObject> createKeycloakUser(String token, String email, String fullName) {
         String usersUrl = keycloakUrl + "/admin/realms/" + realm + "/users";
 
         String firstName;
@@ -170,7 +189,15 @@ public class KeycloakAdminService {
                 });
     }
 
-    private Uni<Void> setUserPassword(String token, String userId, String password) {
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 30000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 1, delay = 1000)
+    @Timeout(10000)
+    Uni<Void> setUserPassword(String token, String userId, String password) {
         String credUrl = keycloakUrl + "/admin/realms/" + realm + "/users/" + userId + "/reset-password";
 
         JsonObject credential = new JsonObject()
@@ -192,7 +219,15 @@ public class KeycloakAdminService {
                 });
     }
 
-    private Uni<Void> assignRealmRoles(String token, String userId, List<String> roleNames) {
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 30000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 1, delay = 1000)
+    @Timeout(10000)
+    Uni<Void> assignRealmRoles(String token, String userId, List<String> roleNames) {
         if (roleNames == null || roleNames.isEmpty()) {
             return Uni.createFrom().voidItem();
         }
@@ -238,6 +273,14 @@ public class KeycloakAdminService {
                 });
     }
 
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 30000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 1, delay = 1000)
+    @Timeout(10000)
     public Uni<Void> disableUser(String userId) {
         return getAdminToken()
                 .flatMap(token -> {

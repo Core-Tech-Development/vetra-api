@@ -11,6 +11,9 @@ import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 @ApplicationScoped
@@ -45,6 +48,14 @@ public class AsaasApiClient {
         this.webClient = WebClient.create(vertx, options);
     }
 
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 60000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 2, delay = 2000, jitter = 1000)
+    @Timeout(15000)
     public Uni<JsonObject> createCustomer(String name, String cpfCnpj, String email, String externalReference) {
         if (!enabled) {
             LOG.info("Asaas disabled — returning mock customer");
@@ -64,6 +75,14 @@ public class AsaasApiClient {
                 .invoke(result -> LOG.infof("Asaas customer created: %s", result.getString("id")));
     }
 
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 60000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 2, delay = 2000, jitter = 1000)
+    @Timeout(15000)
     public Uni<JsonObject> createPayment(String customerId, String billingType, double value,
                                           String dueDate, String description, String externalReference) {
         if (!enabled) {
@@ -89,6 +108,14 @@ public class AsaasApiClient {
                         result.getString("id"), result.getString("status")));
     }
 
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 60000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 2, delay = 2000, jitter = 1000)
+    @Timeout(15000)
     public Uni<JsonObject> getPayment(String paymentId) {
         if (!enabled) {
             return Uni.createFrom().item(new JsonObject().put("id", paymentId).put("status", "PENDING"));
@@ -96,6 +123,14 @@ public class AsaasApiClient {
         return get("/payments/" + paymentId);
     }
 
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 60000,
+            successThreshold = 3
+    )
+    @Retry(maxRetries = 2, delay = 2000, jitter = 1000)
+    @Timeout(15000)
     public Uni<JsonObject> getPixQrCode(String paymentId) {
         if (!enabled) {
             return Uni.createFrom().item(new JsonObject()
