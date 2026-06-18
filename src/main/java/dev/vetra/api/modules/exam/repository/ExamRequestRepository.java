@@ -188,6 +188,12 @@ public class ExamRequestRepository {
                 });
     }
 
+    public Uni<Boolean> deleteById(UUID id) {
+        return client.preparedQuery("DELETE FROM exam_request WHERE id = $1")
+                .execute(Tuple.of(id))
+                .map(rows -> rows.rowCount() > 0);
+    }
+
     // ---- Row Mapping ----
 
     private ExamRequest mapRow(Row row) {

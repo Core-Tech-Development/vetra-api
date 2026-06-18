@@ -121,6 +121,12 @@ public class ClinicRepository {
                 .map(rows -> mapRow(rows.iterator().next()));
     }
 
+    public Uni<Boolean> deleteById(UUID id) {
+        return client.preparedQuery("DELETE FROM clinic WHERE id = $1")
+                .execute(Tuple.of(id))
+                .map(rows -> rows.rowCount() > 0);
+    }
+
     // ---- Row Mapping ----
 
     private Clinic mapRow(Row row) {

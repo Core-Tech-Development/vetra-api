@@ -5,6 +5,7 @@ import dev.vetra.api.modules.laudo.dto.LaudoMapper;
 import dev.vetra.api.modules.laudo.dto.LaudoResponse;
 import dev.vetra.api.modules.laudo.dto.UpdateLaudoRequest;
 import dev.vetra.api.modules.laudo.usecase.CreateLaudoUseCase;
+import dev.vetra.api.modules.laudo.usecase.DeleteLaudoUseCase;
 import dev.vetra.api.modules.laudo.usecase.GetLaudoByAppointmentUseCase;
 import dev.vetra.api.modules.laudo.usecase.GetLaudoUseCase;
 import dev.vetra.api.modules.laudo.usecase.IssueLaudoUseCase;
@@ -15,9 +16,11 @@ import dev.vetra.api.shared.exception.NotFoundException;
 import dev.vetra.api.shared.pagination.PageRequest;
 import dev.vetra.api.shared.pagination.PageResponse;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PATCH;
@@ -50,6 +53,7 @@ public class LaudoResource {
     private final GetLaudoUseCase getLaudoUseCase;
     private final UpdateLaudoUseCase updateLaudoUseCase;
     private final IssueLaudoUseCase issueLaudoUseCase;
+    private final DeleteLaudoUseCase deleteLaudoUseCase;
     private final ListLaudosBySpecialistUseCase listLaudosBySpecialistUseCase;
     private final GetLaudoByAppointmentUseCase getLaudoByAppointmentUseCase;
     private final AppointmentRepository appointmentRepository;
@@ -59,6 +63,7 @@ public class LaudoResource {
                           GetLaudoUseCase getLaudoUseCase,
                           UpdateLaudoUseCase updateLaudoUseCase,
                           IssueLaudoUseCase issueLaudoUseCase,
+                          DeleteLaudoUseCase deleteLaudoUseCase,
                           ListLaudosBySpecialistUseCase listLaudosBySpecialistUseCase,
                           GetLaudoByAppointmentUseCase getLaudoByAppointmentUseCase,
                           AppointmentRepository appointmentRepository) {
@@ -66,6 +71,7 @@ public class LaudoResource {
         this.getLaudoUseCase = getLaudoUseCase;
         this.updateLaudoUseCase = updateLaudoUseCase;
         this.issueLaudoUseCase = issueLaudoUseCase;
+        this.deleteLaudoUseCase = deleteLaudoUseCase;
         this.listLaudosBySpecialistUseCase = listLaudosBySpecialistUseCase;
         this.getLaudoByAppointmentUseCase = getLaudoByAppointmentUseCase;
         this.appointmentRepository = appointmentRepository;
@@ -147,6 +153,22 @@ public class LaudoResource {
             @Parameter(description = "Laudo UUID") UUID id) {
         return issueLaudoUseCase.execute(id)
                 .map(laudo -> Response.ok(LaudoMapper.toResponse(laudo)).build());
+    }
+
+    @DELETE
+    @Path("/laudos/{id}")
+    @RolesAllowed("PLATFORM_ADMIN")
+    @Operation(summary = "Delete a laudo (admin only)")
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "Laudo deleted"),
+            @APIResponse(responseCode = "404", description = "Laudo not found"),
+            @APIResponse(responseCode = "409", description = "Laudo has dependent records")
+    })
+    public Uni<Response> delete(
+            @PathParam("id")
+            @Parameter(description = "Laudo UUID") UUID id) {
+        return deleteLaudoUseCase.execute(id)
+                .replaceWith(Response.noContent().build());
     }
 
     @GET

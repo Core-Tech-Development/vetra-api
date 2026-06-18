@@ -117,6 +117,18 @@ public class LaudoRepository {
                 .map(rows -> mapRow(rows.iterator().next()));
     }
 
+    public Uni<Boolean> deleteById(UUID id) {
+        return client.preparedQuery("DELETE FROM laudo WHERE id = $1")
+                .execute(Tuple.of(id))
+                .map(rows -> rows.rowCount() > 0);
+    }
+
+    public Uni<Long> countByAppointmentId(UUID appointmentId) {
+        return client.preparedQuery("SELECT COUNT(*) AS total FROM laudo WHERE appointment_id = $1")
+                .execute(Tuple.of(appointmentId))
+                .map(rows -> rows.iterator().next().getLong("total"));
+    }
+
     // ---- Row Mapping ----
 
     private Laudo mapRow(Row row) {

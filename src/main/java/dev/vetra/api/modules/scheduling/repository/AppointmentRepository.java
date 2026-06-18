@@ -164,6 +164,24 @@ public class AppointmentRepository {
                 .replaceWithVoid();
     }
 
+    public Uni<Boolean> deleteById(UUID id) {
+        return client.preparedQuery("DELETE FROM appointment WHERE id = $1")
+                .execute(Tuple.of(id))
+                .map(rows -> rows.rowCount() > 0);
+    }
+
+    public Uni<Long> countActiveBySpecialistId(UUID specialistId) {
+        return client.preparedQuery("SELECT COUNT(*) AS total FROM appointment WHERE specialist_id = $1 AND status NOT IN ('COMPLETED', 'CANCELLED', 'NO_SHOW')")
+                .execute(Tuple.of(specialistId))
+                .map(rows -> rows.iterator().next().getLong("total"));
+    }
+
+    public Uni<Long> countByExamRequestId(UUID examRequestId) {
+        return client.preparedQuery("SELECT COUNT(*) AS total FROM appointment WHERE exam_request_id = $1")
+                .execute(Tuple.of(examRequestId))
+                .map(rows -> rows.iterator().next().getLong("total"));
+    }
+
     // ---- Row Mapping ----
 
     private Appointment mapRow(Row row) {

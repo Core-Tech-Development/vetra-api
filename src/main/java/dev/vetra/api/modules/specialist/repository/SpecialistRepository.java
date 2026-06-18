@@ -220,6 +220,12 @@ public class SpecialistRepository {
                 .map(this::mapList);
     }
 
+    public Uni<Boolean> deleteById(UUID id) {
+        return client.preparedQuery("DELETE FROM specialist WHERE id = $1")
+                .execute(Tuple.of(id))
+                .map(rows -> rows.rowCount() > 0);
+    }
+
     // ---- Row Mapping ----
 
     private Specialist mapRow(Row row) {

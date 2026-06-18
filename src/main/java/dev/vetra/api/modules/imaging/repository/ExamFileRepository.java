@@ -74,6 +74,16 @@ public class ExamFileRepository {
                 .map(rows -> rows.rowCount() > 0);
     }
 
+    public Uni<Long> countByLaudoId(UUID laudoId) {
+        return client.preparedQuery("""
+                        SELECT COUNT(*) AS total FROM exam_file ef
+                        JOIN laudo l ON l.appointment_id = ef.appointment_id
+                        WHERE l.id = $1
+                        """)
+                .execute(Tuple.of(laudoId))
+                .map(rows -> rows.iterator().next().getLong("total"));
+    }
+
     // ---- Row Mapping ----
 
     private ExamFile mapRow(Row row) {

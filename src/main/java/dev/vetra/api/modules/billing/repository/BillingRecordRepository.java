@@ -201,6 +201,12 @@ public class BillingRecordRepository {
                 .map(rows -> rows.iterator().next().getLong("total"));
     }
 
+    public Uni<Boolean> deleteById(UUID id) {
+        return client.preparedQuery("DELETE FROM billing_record WHERE id = $1")
+                .execute(Tuple.of(id))
+                .map(rows -> rows.rowCount() > 0);
+    }
+
     // ---- Row Mapping ----
 
     private BillingRecord mapRow(Row row) {

@@ -4,11 +4,16 @@ import dev.vetra.api.modules.admin.dto.AdminDashboardResponse;
 import dev.vetra.api.modules.admin.usecase.ApproveClinicUseCase;
 import dev.vetra.api.modules.admin.usecase.GetAdminDashboardUseCase;
 import dev.vetra.api.modules.admin.usecase.SuspendClinicUseCase;
+import dev.vetra.api.modules.billing.usecase.DeleteBillingRecordUseCase;
 import dev.vetra.api.modules.clinic.dto.ClinicMapper;
 import dev.vetra.api.modules.clinic.dto.ClinicResponse;
+import dev.vetra.api.modules.clinic.usecase.DeleteClinicUseCase;
+import dev.vetra.api.modules.specialist.usecase.DeleteSpecialistUseCase;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
@@ -36,14 +41,23 @@ public class AdminResource {
     private final ApproveClinicUseCase approveClinicUseCase;
     private final SuspendClinicUseCase suspendClinicUseCase;
     private final GetAdminDashboardUseCase getAdminDashboardUseCase;
+    private final DeleteClinicUseCase deleteClinicUseCase;
+    private final DeleteSpecialistUseCase deleteSpecialistUseCase;
+    private final DeleteBillingRecordUseCase deleteBillingRecordUseCase;
 
     @Inject
     public AdminResource(ApproveClinicUseCase approveClinicUseCase,
                           SuspendClinicUseCase suspendClinicUseCase,
-                          GetAdminDashboardUseCase getAdminDashboardUseCase) {
+                          GetAdminDashboardUseCase getAdminDashboardUseCase,
+                          DeleteClinicUseCase deleteClinicUseCase,
+                          DeleteSpecialistUseCase deleteSpecialistUseCase,
+                          DeleteBillingRecordUseCase deleteBillingRecordUseCase) {
         this.approveClinicUseCase = approveClinicUseCase;
         this.suspendClinicUseCase = suspendClinicUseCase;
         this.getAdminDashboardUseCase = getAdminDashboardUseCase;
+        this.deleteClinicUseCase = deleteClinicUseCase;
+        this.deleteSpecialistUseCase = deleteSpecialistUseCase;
+        this.deleteBillingRecordUseCase = deleteBillingRecordUseCase;
     }
 
     @PATCH
@@ -88,5 +102,52 @@ public class AdminResource {
     public Uni<Response> getDashboard() {
         return getAdminDashboardUseCase.execute()
                 .map(dashboard -> Response.ok(dashboard).build());
+    }
+
+    @DELETE
+    @Path("/clinics/{id}")
+    @RolesAllowed("PLATFORM_ADMIN")
+    @Operation(summary = "Delete a clinic", description = "Deletes a clinic if it has no dependent records")
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "Clinic deleted"),
+            @APIResponse(responseCode = "404", description = "Clinic not found"),
+            @APIResponse(responseCode = "409", description = "Clinic has dependent records")
+    })
+    public Uni<Response> deleteClinic(
+            @PathParam("id")
+            @Parameter(description = "Clinic UUID") UUID id) {
+        return deleteClinicUseCase.execute(id)
+                .replaceWith(Response.noContent().build());
+    }
+
+    @DELETE
+    @Path("/specialists/{id}")
+    @RolesAllowed("PLATFORM_ADMIN")
+    @Operation(summary = "Delete a specialist", description = "Deletes a specialist if they have no active appointments")
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "Specialist deleted"),
+            @APIResponse(responseCode = "404", description = "Specialist not found"),
+            @APIResponse(responseCode = "409", description = "Specialist has dependent records")
+    })
+    public Uni<Response> deleteSpecialist(
+            @PathParam("id")
+            @Parameter(description = "Specialist UUID") UUID id) {
+        return deleteSpecialistUseCase.execute(id)
+                .replaceWith(Response.noContent().build());
+    }
+
+    @DELETE
+    @Path("/billing-records/{id}")
+    @RolesAllowed("PLATFORM_ADMIN")
+    @Operation(summary = "Delete a billing record", description = "Deletes a billing record")
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "Billing record deleted"),
+            @APIResponse(responseCode = "404", description = "Billing record not found")
+    })
+    public Uni<Response> deleteBillingRecord(
+            @PathParam("id")
+            @Parameter(description = "Billing record UUID") UUID id) {
+        return deleteBillingRecordUseCase.execute(id)
+                .replaceWith(Response.noContent().build());
     }
 }

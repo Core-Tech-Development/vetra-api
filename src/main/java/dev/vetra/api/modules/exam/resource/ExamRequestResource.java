@@ -6,6 +6,7 @@ import dev.vetra.api.modules.exam.dto.ExamRequestResponse;
 import dev.vetra.api.modules.exam.dto.UpdateExamRequestRequest;
 import dev.vetra.api.modules.exam.usecase.CancelExamRequestUseCase;
 import dev.vetra.api.modules.exam.usecase.CreateExamRequestUseCase;
+import dev.vetra.api.modules.exam.usecase.DeleteExamRequestUseCase;
 import dev.vetra.api.modules.exam.usecase.GetExamRequestUseCase;
 import dev.vetra.api.modules.exam.usecase.ListExamRequestsByClinicUseCase;
 import dev.vetra.api.modules.exam.usecase.ListExamRequestsByPatientUseCase;
@@ -14,9 +15,11 @@ import dev.vetra.api.shared.pagination.PageRequest;
 import dev.vetra.api.shared.pagination.PageResponse;
 import dev.vetra.api.shared.security.SecurityContext;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PATCH;
@@ -52,6 +55,7 @@ public class ExamRequestResource {
     private final ListExamRequestsByPatientUseCase listExamRequestsByPatientUseCase;
     private final CancelExamRequestUseCase cancelExamRequestUseCase;
     private final UpdateExamRequestUseCase updateExamRequestUseCase;
+    private final DeleteExamRequestUseCase deleteExamRequestUseCase;
     private final SecurityContext securityContext;
 
     @Inject
@@ -61,6 +65,7 @@ public class ExamRequestResource {
                                ListExamRequestsByPatientUseCase listExamRequestsByPatientUseCase,
                                CancelExamRequestUseCase cancelExamRequestUseCase,
                                UpdateExamRequestUseCase updateExamRequestUseCase,
+                               DeleteExamRequestUseCase deleteExamRequestUseCase,
                                SecurityContext securityContext) {
         this.createExamRequestUseCase = createExamRequestUseCase;
         this.getExamRequestUseCase = getExamRequestUseCase;
@@ -68,6 +73,7 @@ public class ExamRequestResource {
         this.listExamRequestsByPatientUseCase = listExamRequestsByPatientUseCase;
         this.cancelExamRequestUseCase = cancelExamRequestUseCase;
         this.updateExamRequestUseCase = updateExamRequestUseCase;
+        this.deleteExamRequestUseCase = deleteExamRequestUseCase;
         this.securityContext = securityContext;
     }
 
@@ -172,5 +178,21 @@ public class ExamRequestResource {
             @Parameter(description = "Patient UUID") UUID patientId) {
         return listExamRequestsByPatientUseCase.execute(patientId)
                 .map(requests -> Response.ok(requests).build());
+    }
+
+    @DELETE
+    @Path("/exam-requests/{id}")
+    @RolesAllowed("PLATFORM_ADMIN")
+    @Operation(summary = "Delete exam request", description = "Deletes an exam request if it has no dependent appointments")
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "Exam request deleted"),
+            @APIResponse(responseCode = "404", description = "Exam request not found"),
+            @APIResponse(responseCode = "409", description = "Exam request has dependent records")
+    })
+    public Uni<Response> delete(
+            @PathParam("id")
+            @Parameter(description = "Exam request UUID") UUID id) {
+        return deleteExamRequestUseCase.execute(id)
+                .replaceWith(Response.noContent().build());
     }
 }

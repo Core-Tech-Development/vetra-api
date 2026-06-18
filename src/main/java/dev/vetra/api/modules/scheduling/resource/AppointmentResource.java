@@ -10,6 +10,7 @@ import dev.vetra.api.modules.scheduling.usecase.AcceptAppointmentUseCase;
 import dev.vetra.api.modules.scheduling.usecase.CancelAppointmentUseCase;
 import dev.vetra.api.modules.scheduling.usecase.CreateAppointmentNoteUseCase;
 import dev.vetra.api.modules.scheduling.usecase.DeclineAppointmentUseCase;
+import dev.vetra.api.modules.scheduling.usecase.DeleteAppointmentUseCase;
 import dev.vetra.api.modules.scheduling.usecase.CompleteAppointmentUseCase;
 import dev.vetra.api.modules.scheduling.usecase.CompleteExamUseCase;
 import dev.vetra.api.modules.scheduling.usecase.GetAppointmentUseCase;
@@ -24,9 +25,11 @@ import dev.vetra.api.shared.pagination.PageRequest;
 import dev.vetra.api.shared.pagination.PageResponse;
 import dev.vetra.api.shared.security.SecurityContext;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PATCH;
@@ -67,6 +70,7 @@ public class AppointmentResource {
     private final NoShowAppointmentUseCase noShowAppointmentUseCase;
     private final CancelAppointmentUseCase cancelAppointmentUseCase;
     private final DeclineAppointmentUseCase declineAppointmentUseCase;
+    private final DeleteAppointmentUseCase deleteAppointmentUseCase;
     private final CreateAppointmentNoteUseCase createAppointmentNoteUseCase;
     private final ListAppointmentNotesByAppointmentUseCase listAppointmentNotesByAppointmentUseCase;
     private final SecurityContext securityContext;
@@ -84,6 +88,7 @@ public class AppointmentResource {
                                NoShowAppointmentUseCase noShowAppointmentUseCase,
                                CancelAppointmentUseCase cancelAppointmentUseCase,
                                DeclineAppointmentUseCase declineAppointmentUseCase,
+                               DeleteAppointmentUseCase deleteAppointmentUseCase,
                                CreateAppointmentNoteUseCase createAppointmentNoteUseCase,
                                ListAppointmentNotesByAppointmentUseCase listAppointmentNotesByAppointmentUseCase,
                                SecurityContext securityContext) {
@@ -99,6 +104,7 @@ public class AppointmentResource {
         this.noShowAppointmentUseCase = noShowAppointmentUseCase;
         this.cancelAppointmentUseCase = cancelAppointmentUseCase;
         this.declineAppointmentUseCase = declineAppointmentUseCase;
+        this.deleteAppointmentUseCase = deleteAppointmentUseCase;
         this.createAppointmentNoteUseCase = createAppointmentNoteUseCase;
         this.listAppointmentNotesByAppointmentUseCase = listAppointmentNotesByAppointmentUseCase;
         this.securityContext = securityContext;
@@ -324,6 +330,22 @@ public class AppointmentResource {
             @Valid CancelAppointmentRequest request) {
         return cancelAppointmentUseCase.execute(id, request.reason())
                 .map(appointment -> Response.ok(AppointmentMapper.toResponse(appointment)).build());
+    }
+
+    @DELETE
+    @Path("/appointments/{id}")
+    @RolesAllowed("PLATFORM_ADMIN")
+    @Operation(summary = "Delete an appointment (admin only)")
+    @APIResponses({
+            @APIResponse(responseCode = "204", description = "Appointment deleted"),
+            @APIResponse(responseCode = "404", description = "Appointment not found"),
+            @APIResponse(responseCode = "409", description = "Appointment has dependent records")
+    })
+    public Uni<Response> delete(
+            @PathParam("id")
+            @Parameter(description = "Appointment UUID") UUID id) {
+        return deleteAppointmentUseCase.execute(id)
+                .replaceWith(Response.noContent().build());
     }
 
     // ---- Appointment Notes ----
