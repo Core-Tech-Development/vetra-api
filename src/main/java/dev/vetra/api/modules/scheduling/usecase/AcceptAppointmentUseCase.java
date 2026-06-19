@@ -7,6 +7,7 @@ import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
+import dev.vetra.api.modules.audit.usecase.LogAuditEventUseCase;
 import dev.vetra.api.shared.exception.BusinessException;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
@@ -30,16 +31,19 @@ public class AcceptAppointmentUseCase {
     private final ExamRequestRepository examRequestRepository;
     private final AppointmentOwnershipValidator ownershipValidator;
     private final NotificationService notificationService;
+    private final LogAuditEventUseCase auditUseCase;
 
     @Inject
     public AcceptAppointmentUseCase(AppointmentRepository appointmentRepository,
                                     ExamRequestRepository examRequestRepository,
                                     AppointmentOwnershipValidator ownershipValidator,
-                                    NotificationService notificationService) {
+                                    NotificationService notificationService,
+                                    LogAuditEventUseCase auditUseCase) {
         this.appointmentRepository = appointmentRepository;
         this.examRequestRepository = examRequestRepository;
         this.ownershipValidator = ownershipValidator;
         this.notificationService = notificationService;
+        this.auditUseCase = auditUseCase;
     }
 
     public Uni<Appointment> execute(UUID id, String callerUserId, Set<String> callerRoles) {
@@ -68,7 +72,11 @@ public class AcceptAppointmentUseCase {
                                                 NotificationType.APPOINTMENT_ACCEPTED,
                                                 "Agendamento aceito pelo especialista",
                                                 null, saved.id(), "APPOINTMENT");
-                                    }));
+                                    }))
+                            .flatMap(saved -> auditUseCase.execute(
+                                    callerUserId, "APPOINTMENT", saved.id(), "ACCEPT", null, saved.toString())
+                                    .onFailure().recoverWithNull()
+                                    .replaceWith(saved));
                 });
     }
 }

@@ -6,7 +6,9 @@ import dev.vetra.api.modules.imaging.usecase.DeleteExamFileUseCase;
 import dev.vetra.api.modules.imaging.usecase.GetFileDownloadUrlUseCase;
 import dev.vetra.api.modules.imaging.usecase.ListExamFilesUseCase;
 import dev.vetra.api.modules.imaging.usecase.UploadExamFileUseCase;
+import dev.vetra.api.shared.security.SecurityContext;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -42,21 +44,25 @@ public class ExamFileResource {
     private final ListExamFilesUseCase listExamFilesUseCase;
     private final GetFileDownloadUrlUseCase getFileDownloadUrlUseCase;
     private final DeleteExamFileUseCase deleteExamFileUseCase;
+    private final SecurityContext securityContext;
 
     @Inject
     public ExamFileResource(UploadExamFileUseCase uploadExamFileUseCase,
                             ListExamFilesUseCase listExamFilesUseCase,
                             GetFileDownloadUrlUseCase getFileDownloadUrlUseCase,
-                            DeleteExamFileUseCase deleteExamFileUseCase) {
+                            DeleteExamFileUseCase deleteExamFileUseCase,
+                            SecurityContext securityContext) {
         this.uploadExamFileUseCase = uploadExamFileUseCase;
         this.listExamFilesUseCase = listExamFilesUseCase;
         this.getFileDownloadUrlUseCase = getFileDownloadUrlUseCase;
         this.deleteExamFileUseCase = deleteExamFileUseCase;
+        this.securityContext = securityContext;
     }
 
     @POST
     @Path("/appointments/{appointmentId}/files")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Upload exam file", description = "Uploads an exam file (image, video, PDF) for an appointment")
     @APIResponses({
             @APIResponse(responseCode = "201", description = "File uploaded",
@@ -75,9 +81,7 @@ public class ExamFileResource {
 
         try {
             FileInputStream inputStream = new FileInputStream(file.uploadedFile().toFile());
-            // uploadedBy should come from SecurityContext in production;
-            // using a placeholder for now
-            String uploadedBy = "system";
+            String uploadedBy = securityContext.userId().orElse("unknown");
 
             return uploadExamFileUseCase.execute(appointmentId, fileName, fileType, contentType,
                             inputStream, size, uploadedBy)
@@ -98,6 +102,7 @@ public class ExamFileResource {
 
     @GET
     @Path("/appointments/{appointmentId}/files")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST"})
     @Operation(summary = "List exam files", description = "Lists all exam files for an appointment")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Files listed")
@@ -116,6 +121,7 @@ public class ExamFileResource {
 
     @GET
     @Path("/files/{id}/download-url")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST"})
     @Operation(summary = "Get file download URL", description = "Generates a presigned download URL for an exam file (valid for 2 hours)")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Download URL generated",
@@ -131,6 +137,7 @@ public class ExamFileResource {
 
     @DELETE
     @Path("/files/{id}")
+    @RolesAllowed({"SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "Delete exam file", description = "Deletes an exam file from storage and database")
     @APIResponses({
             @APIResponse(responseCode = "204", description = "File deleted"),

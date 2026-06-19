@@ -112,6 +112,7 @@ public class AppointmentResource {
 
     @POST
     @Path("/appointments")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Schedule appointment",
             description = "Creates a new appointment. If an availability slot ID is provided, the slot is reserved.")
     @APIResponses({
@@ -133,6 +134,7 @@ public class AppointmentResource {
 
     @GET
     @Path("/appointments/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "Get appointment by ID",
             description = "Retrieves a single appointment by its UUID")
     @APIResponses({
@@ -149,6 +151,7 @@ public class AppointmentResource {
 
     @GET
     @Path("/appointments")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "List appointments by status",
             description = "Returns a paginated list of appointments filtered by status")
     @APIResponses({
@@ -170,6 +173,7 @@ public class AppointmentResource {
 
     @GET
     @Path("/specialists/{specialistId}/appointments")
+    @RolesAllowed({"SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "List appointments by specialist",
             description = "Returns a paginated list of appointments for a specialist")
     @APIResponses({
@@ -178,18 +182,21 @@ public class AppointmentResource {
     public Uni<Response> listBySpecialist(
             @PathParam("specialistId")
             @Parameter(description = "Specialist UUID") UUID specialistId,
+            @QueryParam("status")
+            @Parameter(description = "Optional appointment status filter") String status,
             @QueryParam("page") @DefaultValue("0")
             @Parameter(description = "Page number (0-based)") Integer page,
             @QueryParam("size") @DefaultValue("20")
             @Parameter(description = "Page size (max 100)") Integer size) {
 
         PageRequest pageRequest = PageRequest.of(page, size);
-        return listAppointmentsBySpecialistUseCase.execute(specialistId, pageRequest)
+        return listAppointmentsBySpecialistUseCase.execute(specialistId, status, pageRequest)
                 .map(pageResponse -> Response.ok(pageResponse).build());
     }
 
     @PATCH
     @Path("/appointments/{id}/accept")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Accept appointment",
             description = "Specialist accepts the appointment. Transitions from WAITING_SPECIALIST_ACCEPTANCE to ACCEPTED.")
     @APIResponses({
@@ -208,6 +215,7 @@ public class AppointmentResource {
 
     @PATCH
     @Path("/appointments/{id}/start-transit")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Start transit",
             description = "Specialist starts transit to the clinic. Transitions from ACCEPTED/SCHEDULED to IN_TRANSIT.")
     @APIResponses({
@@ -226,6 +234,7 @@ public class AppointmentResource {
 
     @PATCH
     @Path("/appointments/{id}/start-service")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Start service",
             description = "Specialist starts the exam service at the clinic. Transitions from IN_TRANSIT to IN_SERVICE and records actual start time.")
     @APIResponses({
@@ -244,6 +253,7 @@ public class AppointmentResource {
 
     @PATCH
     @Path("/appointments/{id}/complete-exam")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Complete exam",
             description = "Specialist completes the exam. Transitions from IN_SERVICE to WAITING_REPORT and records actual end time.")
     @APIResponses({
@@ -262,6 +272,7 @@ public class AppointmentResource {
 
     @PATCH
     @Path("/appointments/{id}/complete")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Complete appointment",
             description = "Completes an appointment after the report has been issued. Transitions from REPORT_ISSUED to COMPLETED.")
     @APIResponses({
@@ -279,6 +290,7 @@ public class AppointmentResource {
 
     @PATCH
     @Path("/appointments/{id}/no-show")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Mark as no-show",
             description = "Marks an appointment as no-show. Valid from ACCEPTED or IN_TRANSIT. If a slot was reserved, it is freed.")
     @APIResponses({
@@ -296,6 +308,7 @@ public class AppointmentResource {
 
     @PATCH
     @Path("/appointments/{id}/decline")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Decline appointment",
             description = "Specialist declines an appointment request. Only valid from WAITING_SPECIALIST_ACCEPTANCE. Reverts exam request to CREATED.")
     @APIResponses({
@@ -316,6 +329,7 @@ public class AppointmentResource {
 
     @PATCH
     @Path("/appointments/{id}/cancel")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST"})
     @Operation(summary = "Cancel appointment",
             description = "Cancels an appointment with a reason. If a slot was reserved, it is freed back to AVAILABLE.")
     @APIResponses({
@@ -352,6 +366,7 @@ public class AppointmentResource {
 
     @POST
     @Path("/appointments/{id}/notes")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST"})
     @Operation(summary = "Create appointment note",
             description = "Adds a note (observation or incident record) to an appointment.")
     @APIResponses({
@@ -378,6 +393,7 @@ public class AppointmentResource {
 
     @GET
     @Path("/appointments/{id}/notes")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST"})
     @Operation(summary = "List appointment notes",
             description = "Returns all notes for an appointment in chronological order.")
     @APIResponses({

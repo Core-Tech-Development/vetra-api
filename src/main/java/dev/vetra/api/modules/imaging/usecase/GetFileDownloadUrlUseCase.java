@@ -49,7 +49,7 @@ public class GetFileDownloadUrlUseCase {
                                 } catch (Exception e) {
                                     throw new RuntimeException("Failed to generate presigned URL", e);
                                 }
-                            }).emitOn(Infrastructure.getDefaultWorkerPool())
+                            }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                             .map(url -> ExamFileMapper.toResponseWithUrl(file, url));
                 });
     }

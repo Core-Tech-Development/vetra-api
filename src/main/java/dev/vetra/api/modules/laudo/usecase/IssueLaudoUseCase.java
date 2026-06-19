@@ -1,6 +1,7 @@
 package dev.vetra.api.modules.laudo.usecase;
 
 import dev.vetra.api.modules.billing.usecase.CreateBillingRecordUseCase;
+import dev.vetra.api.modules.exam.domain.ExamRequestStatus;
 import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
 import dev.vetra.api.modules.laudo.domain.Laudo;
 import dev.vetra.api.modules.laudo.domain.LaudoStatus;
@@ -88,10 +89,31 @@ public class IssueLaudoUseCase {
                                             .onFailure().recoverWithNull()
                                             .map(v -> savedLaudo)
                             )
+                            .call(savedLaudo -> completeExamRequest(savedLaudo))
                             .call(savedLaudo -> notifyClinicLaudoIssued(savedLaudo))
                             .flatMap(savedLaudo -> triggerBilling(savedLaudo)
                                     .map(v -> savedLaudo));
                 });
+    }
+
+    private Uni<Void> completeExamRequest(Laudo laudo) {
+        return appointmentRepository.findById(laudo.appointmentId())
+                .flatMap(aptOpt -> {
+                    if (aptOpt.isEmpty()) {
+                        LOG.warnf("Appointment %s not found for exam request completion", laudo.appointmentId());
+                        return Uni.createFrom().voidItem();
+                    }
+                    UUID examRequestId = aptOpt.get().examRequestId();
+                    LOG.infof("Completing exam request %s for laudo %s", examRequestId, laudo.id());
+                    return examRequestRepository.updateStatus(examRequestId, ExamRequestStatus.COMPLETED)
+                            .onItem().invoke(er -> LOG.infof("ExamRequest %s transitioned to COMPLETED", er.id()))
+                            .onFailure().invoke(err -> LOG.warnf(err, "Failed to complete exam request %s", examRequestId))
+                            .onFailure().recoverWithNull()
+                            .replaceWithVoid();
+                })
+                .onFailure().invoke(err -> LOG.warnf(err, "Failed to complete exam request for laudo %s", laudo.id()))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
 
     private Uni<Void> notifyClinicLaudoIssued(Laudo laudo) {

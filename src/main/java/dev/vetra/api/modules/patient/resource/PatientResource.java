@@ -13,6 +13,7 @@ import dev.vetra.api.modules.patient.usecase.UpdatePatientUseCase;
 import dev.vetra.api.shared.pagination.PageRequest;
 import dev.vetra.api.shared.pagination.PageResponse;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
@@ -68,6 +69,7 @@ public class PatientResource {
 
     @POST
     @Path("/clinics/{clinicId}/tutors/{tutorId}/patients")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Create a new patient", description = "Registers a new patient (animal) for a tutor in a clinic")
     @APIResponses({
             @APIResponse(responseCode = "201", description = "Patient created",
@@ -92,6 +94,7 @@ public class PatientResource {
 
     @GET
     @Path("/clinics/{clinicId}/patients")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List patients by clinic", description = "Returns a paginated list of patients for a clinic")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Paginated patient list")
@@ -111,6 +114,7 @@ public class PatientResource {
 
     @GET
     @Path("/tutors/{tutorId}/patients")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List patients by tutor", description = "Returns a paginated list of patients for a tutor")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Paginated patient list")
@@ -130,6 +134,7 @@ public class PatientResource {
 
     @GET
     @Path("/patients/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "Get patient by ID", description = "Retrieves a single patient by its UUID")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Patient found",
@@ -145,6 +150,7 @@ public class PatientResource {
 
     @PUT
     @Path("/patients/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Update patient", description = "Updates an existing patient's information")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Patient updated",
@@ -162,6 +168,7 @@ public class PatientResource {
 
     @DELETE
     @Path("/patients/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Delete patient", description = "Deletes a patient. The patient must have no exam requests.")
     @APIResponses({
             @APIResponse(responseCode = "204", description = "Patient deleted"),

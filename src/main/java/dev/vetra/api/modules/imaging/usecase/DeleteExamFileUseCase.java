@@ -46,7 +46,7 @@ public class DeleteExamFileUseCase {
                                     throw new RuntimeException("Failed to delete file from storage", e);
                                 }
                                 return (Void) null;
-                            }).emitOn(Infrastructure.getDefaultWorkerPool())
+                            }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                             .flatMap(ignored -> examFileRepository.deleteById(fileId))
                             .replaceWithVoid();
                 });

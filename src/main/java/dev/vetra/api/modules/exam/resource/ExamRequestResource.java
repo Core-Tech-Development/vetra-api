@@ -79,6 +79,7 @@ public class ExamRequestResource {
 
     @POST
     @Path("/clinics/{clinicId}/exam-requests")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Create a new exam request", description = "Creates a new exam request for a patient in a clinic")
     @APIResponses({
             @APIResponse(responseCode = "201", description = "Exam request created",
@@ -102,6 +103,7 @@ public class ExamRequestResource {
 
     @GET
     @Path("/clinics/{clinicId}/exam-requests")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List exam requests by clinic", description = "Returns a paginated list of exam requests for a clinic")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Paginated exam request list")
@@ -121,6 +123,7 @@ public class ExamRequestResource {
 
     @GET
     @Path("/exam-requests/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "Get exam request by ID", description = "Retrieves a single exam request by its UUID")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Exam request found",
@@ -136,6 +139,7 @@ public class ExamRequestResource {
 
     @PUT
     @Path("/exam-requests/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Update exam request", description = "Updates an existing exam request (only if in CREATED status)")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Exam request updated",
@@ -153,6 +157,7 @@ public class ExamRequestResource {
 
     @PATCH
     @Path("/exam-requests/{id}/cancel")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Cancel exam request", description = "Cancels an exam request (only if in CREATED or PENDING_SPECIALIST status)")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Exam request cancelled",
@@ -169,6 +174,7 @@ public class ExamRequestResource {
 
     @GET
     @Path("/patients/{patientId}/exam-requests")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List exam requests by patient", description = "Returns all exam requests for a given patient")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Exam request list")

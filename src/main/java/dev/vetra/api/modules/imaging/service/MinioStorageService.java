@@ -9,6 +9,7 @@ import io.minio.http.Method;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import okhttp3.OkHttpClient;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 
@@ -41,6 +42,7 @@ public class MinioStorageService {
         this.bucket = config.bucket();
     }
 
+    @CircuitBreaker(requestVolumeThreshold = 8, failureRatio = 0.5, delay = 30000, successThreshold = 3)
     @Retry(maxRetries = 2, delay = 1000, jitter = 500)
     @Timeout(60000)
     public void uploadFile(String key, InputStream data, long size, String contentType) throws Exception {
@@ -51,6 +53,7 @@ public class MinioStorageService {
                 .build());
     }
 
+    @CircuitBreaker(requestVolumeThreshold = 8, failureRatio = 0.5, delay = 30000, successThreshold = 3)
     @Retry(maxRetries = 2, delay = 1000, jitter = 500)
     @Timeout(60000)
     public String getPresignedUrl(String key, int expirySeconds) throws Exception {
@@ -61,6 +64,7 @@ public class MinioStorageService {
                 .build());
     }
 
+    @CircuitBreaker(requestVolumeThreshold = 8, failureRatio = 0.5, delay = 30000, successThreshold = 3)
     @Retry(maxRetries = 2, delay = 1000, jitter = 500)
     @Timeout(60000)
     public void deleteFile(String key) throws Exception {

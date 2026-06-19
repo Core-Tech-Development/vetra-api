@@ -12,6 +12,7 @@ import dev.vetra.api.modules.clinic.usecase.UpdateClinicStaffUseCase;
 import dev.vetra.api.shared.pagination.PageRequest;
 import dev.vetra.api.shared.pagination.PageResponse;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
@@ -64,6 +65,7 @@ public class ClinicStaffResource {
 
     @POST
     @Path("/clinics/{clinicId}/staff")
+    @RolesAllowed("CLINIC_ADMIN")
     @Operation(summary = "Create a new clinic staff member", description = "Registers a new staff member (veterinarian or secretary) for a clinic")
     @APIResponses({
             @APIResponse(responseCode = "201", description = "Staff member created",
@@ -88,6 +90,7 @@ public class ClinicStaffResource {
 
     @GET
     @Path("/clinics/{clinicId}/staff")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List staff by clinic", description = "Returns a paginated list of staff members for a clinic")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Paginated staff list")
@@ -107,6 +110,7 @@ public class ClinicStaffResource {
 
     @GET
     @Path("/staff/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Get staff member by ID", description = "Retrieves a single staff member by its UUID")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Staff member found",
@@ -122,6 +126,7 @@ public class ClinicStaffResource {
 
     @PUT
     @Path("/staff/{id}")
+    @RolesAllowed("CLINIC_ADMIN")
     @Operation(summary = "Update staff member", description = "Updates an existing staff member's information")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Staff member updated",
@@ -139,6 +144,7 @@ public class ClinicStaffResource {
 
     @DELETE
     @Path("/staff/{id}")
+    @RolesAllowed("CLINIC_ADMIN")
     @Operation(summary = "Deactivate staff member", description = "Deactivates a staff member (soft delete). Disables the corresponding Keycloak user.")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Staff member deactivated",

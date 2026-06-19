@@ -12,6 +12,7 @@ import dev.vetra.api.modules.tutor.usecase.UpdateTutorUseCase;
 import dev.vetra.api.shared.pagination.PageRequest;
 import dev.vetra.api.shared.pagination.PageResponse;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
@@ -64,6 +65,7 @@ public class TutorResource {
 
     @POST
     @Path("/clinics/{clinicId}/tutors")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Create a new tutor", description = "Registers a new tutor (pet owner) for a clinic")
     @APIResponses({
             @APIResponse(responseCode = "201", description = "Tutor created",
@@ -87,6 +89,7 @@ public class TutorResource {
 
     @GET
     @Path("/clinics/{clinicId}/tutors")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List tutors by clinic", description = "Returns a paginated list of tutors for a clinic")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Paginated tutor list")
@@ -106,6 +109,7 @@ public class TutorResource {
 
     @GET
     @Path("/tutors/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "Get tutor by ID", description = "Retrieves a single tutor by its UUID")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Tutor found",
@@ -121,6 +125,7 @@ public class TutorResource {
 
     @PUT
     @Path("/tutors/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Update tutor", description = "Updates an existing tutor's information")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Tutor updated",
@@ -139,6 +144,7 @@ public class TutorResource {
 
     @DELETE
     @Path("/tutors/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Delete tutor", description = "Deletes a tutor. The tutor must have no linked patients.")
     @APIResponses({
             @APIResponse(responseCode = "204", description = "Tutor deleted"),

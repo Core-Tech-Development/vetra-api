@@ -9,6 +9,7 @@ import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.domain.SlotStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
 import dev.vetra.api.modules.scheduling.repository.AvailabilitySlotRepository;
+import dev.vetra.api.modules.audit.usecase.LogAuditEventUseCase;
 import dev.vetra.api.shared.exception.BusinessException;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
@@ -34,18 +35,21 @@ public class DeclineAppointmentUseCase {
     private final ExamRequestRepository examRequestRepository;
     private final AppointmentOwnershipValidator ownershipValidator;
     private final NotificationService notificationService;
+    private final LogAuditEventUseCase auditUseCase;
 
     @Inject
     public DeclineAppointmentUseCase(AppointmentRepository appointmentRepository,
                                      AvailabilitySlotRepository slotRepository,
                                      ExamRequestRepository examRequestRepository,
                                      AppointmentOwnershipValidator ownershipValidator,
-                                     NotificationService notificationService) {
+                                     NotificationService notificationService,
+                                     LogAuditEventUseCase auditUseCase) {
         this.appointmentRepository = appointmentRepository;
         this.slotRepository = slotRepository;
         this.examRequestRepository = examRequestRepository;
         this.ownershipValidator = ownershipValidator;
         this.notificationService = notificationService;
+        this.auditUseCase = auditUseCase;
     }
 
     public Uni<Appointment> execute(UUID id, String reason, String callerUserId, Set<String> callerRoles) {
@@ -85,7 +89,11 @@ public class DeclineAppointmentUseCase {
                                                 NotificationType.APPOINTMENT_DECLINED,
                                                 "Agendamento recusado pelo especialista",
                                                 null, saved.id(), "APPOINTMENT");
-                                    }));
+                                    }))
+                            .flatMap(saved -> auditUseCase.execute(
+                                    callerUserId, "APPOINTMENT", saved.id(), "DECLINE", null, saved.toString())
+                                    .onFailure().recoverWithNull()
+                                    .replaceWith(saved));
                 });
     }
 

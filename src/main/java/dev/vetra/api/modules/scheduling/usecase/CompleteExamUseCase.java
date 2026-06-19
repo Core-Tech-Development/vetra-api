@@ -5,6 +5,7 @@ import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
+import dev.vetra.api.modules.audit.usecase.LogAuditEventUseCase;
 import dev.vetra.api.shared.exception.BusinessException;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
@@ -28,14 +29,17 @@ public class CompleteExamUseCase {
     private final AppointmentRepository appointmentRepository;
     private final AppointmentOwnershipValidator ownershipValidator;
     private final NotificationService notificationService;
+    private final LogAuditEventUseCase auditUseCase;
 
     @Inject
     public CompleteExamUseCase(AppointmentRepository appointmentRepository,
                                AppointmentOwnershipValidator ownershipValidator,
-                               NotificationService notificationService) {
+                               NotificationService notificationService,
+                               LogAuditEventUseCase auditUseCase) {
         this.appointmentRepository = appointmentRepository;
         this.ownershipValidator = ownershipValidator;
         this.notificationService = notificationService;
+        this.auditUseCase = auditUseCase;
     }
 
     public Uni<Appointment> execute(UUID id, String callerUserId, Set<String> callerRoles) {
@@ -57,7 +61,11 @@ public class CompleteExamUseCase {
                                     saved.specialistId(),
                                     NotificationType.EXAM_COMPLETED,
                                     "Exame concluído — emita o laudo",
-                                    null, saved.id(), "APPOINTMENT"));
+                                    null, saved.id(), "APPOINTMENT"))
+                            .flatMap(saved -> auditUseCase.execute(
+                                    callerUserId, "APPOINTMENT", saved.id(), "COMPLETE_EXAM", null, saved.toString())
+                                    .onFailure().recoverWithNull()
+                                    .replaceWith(saved));
                 });
     }
 }

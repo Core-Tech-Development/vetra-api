@@ -7,6 +7,7 @@ import dev.vetra.api.modules.exam.repository.ExamRequestRepository;
 import dev.vetra.api.modules.notification.domain.NotificationType;
 import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.patient.repository.PatientRepository;
+import dev.vetra.api.modules.audit.usecase.LogAuditEventUseCase;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -27,14 +28,17 @@ public class CreateExamRequestUseCase {
     private final ExamRequestRepository examRequestRepository;
     private final PatientRepository patientRepository;
     private final NotificationService notificationService;
+    private final LogAuditEventUseCase auditUseCase;
 
     @Inject
     public CreateExamRequestUseCase(ExamRequestRepository examRequestRepository,
                                     PatientRepository patientRepository,
-                                    NotificationService notificationService) {
+                                    NotificationService notificationService,
+                                    LogAuditEventUseCase auditUseCase) {
         this.examRequestRepository = examRequestRepository;
         this.patientRepository = patientRepository;
         this.notificationService = notificationService;
+        this.auditUseCase = auditUseCase;
     }
 
     public Uni<ExamRequest> execute(UUID clinicId, CreateExamRequestRequest request, String requestedBy) {
@@ -51,7 +55,11 @@ public class CreateExamRequestUseCase {
                             .call(saved -> notificationService.notifyAllActiveSpecialists(
                                     NotificationType.EXAM_REQUEST_CREATED,
                                     "Nova solicitação de exame",
-                                    null, saved.id(), "EXAM_REQUEST"));
+                                    null, saved.id(), "EXAM_REQUEST"))
+                            .flatMap(saved -> auditUseCase.execute(
+                                    requestedBy, "EXAM_REQUEST", saved.id(), "CREATE", null, saved.toString())
+                                    .onFailure().recoverWithNull()
+                                    .replaceWith(saved));
                 });
     }
 }

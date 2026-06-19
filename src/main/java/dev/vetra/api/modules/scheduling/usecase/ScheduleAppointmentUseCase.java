@@ -71,14 +71,16 @@ public class ScheduleAppointmentUseCase {
                                 new NotFoundException("AvailabilitySlot", request.availabilitySlotId()));
                     }
                     var slot = opt.get();
-                    if (slot.status() != SlotStatus.AVAILABLE) {
-                        return Uni.createFrom().failure(
-                                new BusinessException("SLOT_NOT_AVAILABLE",
-                                        "Availability slot is not available. Current status: " + slot.status())
-                        );
-                    }
-                    return slotRepository.updateStatus(slot.id(), SlotStatus.RESERVED)
-                            .flatMap(ignored -> {
+
+                    // Atomic compare-and-swap: only one concurrent request can reserve the slot
+                    return slotRepository.reserveIfAvailable(slot.id())
+                            .flatMap(reserved -> {
+                                if (!reserved) {
+                                    return Uni.createFrom().failure(
+                                            new BusinessException("SLOT_NOT_AVAILABLE",
+                                                    "Availability slot is not available. Current status: " + slot.status())
+                                    );
+                                }
                                 Appointment appointment = Appointment.create(
                                         request.examRequestId(),
                                         request.specialistId(),

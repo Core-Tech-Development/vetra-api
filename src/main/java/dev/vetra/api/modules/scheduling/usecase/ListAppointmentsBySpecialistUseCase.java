@@ -30,10 +30,25 @@ public class ListAppointmentsBySpecialistUseCase {
     }
 
     public Uni<PageResponse<AppointmentResponse>> execute(UUID specialistId, PageRequest pageRequest) {
-        LOG.debugf("Listing appointments by specialist: specialistId=%s, page=%d, size=%d", specialistId, pageRequest.page(), pageRequest.size());
-        Uni<List<Appointment>> appointmentsUni = appointmentRepository.findBySpecialistId(
-                specialistId, pageRequest.offset(), pageRequest.size());
-        Uni<Long> countUni = appointmentRepository.countBySpecialistId(specialistId);
+        return execute(specialistId, null, pageRequest);
+    }
+
+    public Uni<PageResponse<AppointmentResponse>> execute(UUID specialistId, String status, PageRequest pageRequest) {
+        LOG.debugf("Listing appointments by specialist: specialistId=%s, status=%s, page=%d, size=%d",
+                specialistId, status, pageRequest.page(), pageRequest.size());
+
+        Uni<List<Appointment>> appointmentsUni;
+        Uni<Long> countUni;
+
+        if (status != null && !status.isBlank()) {
+            appointmentsUni = appointmentRepository.findBySpecialistIdAndStatus(
+                    specialistId, status, pageRequest.offset(), pageRequest.size());
+            countUni = appointmentRepository.countBySpecialistIdAndStatus(specialistId, status);
+        } else {
+            appointmentsUni = appointmentRepository.findBySpecialistId(
+                    specialistId, pageRequest.offset(), pageRequest.size());
+            countUni = appointmentRepository.countBySpecialistId(specialistId);
+        }
 
         return Uni.combine().all().unis(appointmentsUni, countUni)
                 .asTuple()

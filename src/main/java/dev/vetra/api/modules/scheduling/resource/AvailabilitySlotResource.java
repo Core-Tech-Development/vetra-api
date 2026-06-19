@@ -4,15 +4,17 @@ import dev.vetra.api.modules.scheduling.dto.CreateBulkSlotsRequest;
 import dev.vetra.api.modules.scheduling.dto.CreateSlotRequest;
 import dev.vetra.api.modules.scheduling.dto.SlotMapper;
 import dev.vetra.api.modules.scheduling.dto.SlotResponse;
-import dev.vetra.api.modules.scheduling.repository.AvailabilitySlotRepository;
 import dev.vetra.api.modules.scheduling.usecase.BlockSlotUseCase;
 import dev.vetra.api.modules.scheduling.usecase.CreateBulkSlotsUseCase;
 import dev.vetra.api.modules.scheduling.usecase.CreateSlotUseCase;
 import dev.vetra.api.modules.scheduling.usecase.DeleteSlotUseCase;
+import dev.vetra.api.modules.scheduling.usecase.ListAvailableSlotsUseCase;
+import dev.vetra.api.modules.scheduling.usecase.ListCalendarSlotsUseCase;
 import dev.vetra.api.modules.scheduling.usecase.ListSlotsUseCase;
 import dev.vetra.api.shared.exception.BusinessException;
 import dev.vetra.api.shared.pagination.PageRequest;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
@@ -54,7 +56,8 @@ public class AvailabilitySlotResource {
     private final DeleteSlotUseCase deleteSlotUseCase;
     private final BlockSlotUseCase blockSlotUseCase;
     private final CreateBulkSlotsUseCase createBulkSlotsUseCase;
-    private final AvailabilitySlotRepository slotRepository;
+    private final ListCalendarSlotsUseCase listCalendarSlotsUseCase;
+    private final ListAvailableSlotsUseCase listAvailableSlotsUseCase;
 
     @Inject
     public AvailabilitySlotResource(CreateSlotUseCase createSlotUseCase,
@@ -62,17 +65,20 @@ public class AvailabilitySlotResource {
                                     DeleteSlotUseCase deleteSlotUseCase,
                                     BlockSlotUseCase blockSlotUseCase,
                                     CreateBulkSlotsUseCase createBulkSlotsUseCase,
-                                    AvailabilitySlotRepository slotRepository) {
+                                    ListCalendarSlotsUseCase listCalendarSlotsUseCase,
+                                    ListAvailableSlotsUseCase listAvailableSlotsUseCase) {
         this.createSlotUseCase = createSlotUseCase;
         this.listSlotsUseCase = listSlotsUseCase;
         this.deleteSlotUseCase = deleteSlotUseCase;
         this.blockSlotUseCase = blockSlotUseCase;
         this.createBulkSlotsUseCase = createBulkSlotsUseCase;
-        this.slotRepository = slotRepository;
+        this.listCalendarSlotsUseCase = listCalendarSlotsUseCase;
+        this.listAvailableSlotsUseCase = listAvailableSlotsUseCase;
     }
 
     @POST
     @Path("/specialists/{specialistId}/availability-slots")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Create availability slot",
             description = "Creates a new availability slot for a specialist")
     @APIResponses({
@@ -97,6 +103,7 @@ public class AvailabilitySlotResource {
 
     @GET
     @Path("/specialists/{specialistId}/availability-slots")
+    @RolesAllowed({"SPECIALIST", "CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List availability slots",
             description = "Returns a paginated list of availability slots for a specialist")
     @APIResponses({
@@ -117,6 +124,7 @@ public class AvailabilitySlotResource {
 
     @GET
     @Path("/specialists/{specialistId}/availability-slots/calendar")
+    @RolesAllowed({"SPECIALIST", "CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "Get calendar slots",
             description = "Returns all slots for a specialist within a date range (max 31 days). No pagination.")
     @APIResponses({
@@ -149,7 +157,7 @@ public class AvailabilitySlotResource {
             );
         }
 
-        return slotRepository.findBySpecialistIdAndDateRange(specialistId, from, to)
+        return listCalendarSlotsUseCase.execute(specialistId, from, to)
                 .map(slots -> {
                     List<SlotResponse> response = slots.stream()
                             .map(SlotMapper::toResponse)
@@ -160,6 +168,7 @@ public class AvailabilitySlotResource {
 
     @POST
     @Path("/specialists/{specialistId}/availability-slots/bulk")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Create bulk availability slots",
             description = "Creates multiple availability slots based on a recurrence pattern")
     @APIResponses({
@@ -183,6 +192,7 @@ public class AvailabilitySlotResource {
 
     @GET
     @Path("/specialists/{specialistId}/available-slots")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF"})
     @Operation(summary = "List available slots",
             description = "Returns only AVAILABLE slots for a specialist within a date range. Used by clinics to pick slots.")
     @APIResponses({
@@ -208,10 +218,9 @@ public class AvailabilitySlotResource {
             );
         }
 
-        return slotRepository.findBySpecialistIdAndDateRange(specialistId, from, to)
+        return listAvailableSlotsUseCase.execute(specialistId, from, to)
                 .map(slots -> {
                     List<SlotResponse> response = slots.stream()
-                            .filter(slot -> slot.status() == dev.vetra.api.modules.scheduling.domain.SlotStatus.AVAILABLE)
                             .map(SlotMapper::toResponse)
                             .toList();
                     return Response.ok(response).build();
@@ -220,6 +229,7 @@ public class AvailabilitySlotResource {
 
     @DELETE
     @Path("/availability-slots/{id}")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Delete availability slot",
             description = "Deletes an availability slot. Only AVAILABLE slots can be deleted.")
     @APIResponses({
@@ -236,6 +246,7 @@ public class AvailabilitySlotResource {
 
     @PATCH
     @Path("/availability-slots/{id}/block")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Block availability slot",
             description = "Blocks an availability slot. Only AVAILABLE slots can be blocked.")
     @APIResponses({

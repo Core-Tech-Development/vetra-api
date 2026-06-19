@@ -3,7 +3,9 @@ package dev.vetra.api.modules.laudo.usecase;
 import dev.vetra.api.modules.laudo.domain.Laudo;
 import dev.vetra.api.modules.laudo.dto.CreateLaudoRequest;
 import dev.vetra.api.modules.laudo.repository.LaudoRepository;
+import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
 import dev.vetra.api.shared.exception.DuplicateException;
+import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -21,13 +23,28 @@ public class CreateLaudoUseCase {
     private static final Logger LOG = Logger.getLogger(CreateLaudoUseCase.class);
 
     private final LaudoRepository laudoRepository;
+    private final AppointmentRepository appointmentRepository;
 
     @Inject
-    public CreateLaudoUseCase(LaudoRepository laudoRepository) {
+    public CreateLaudoUseCase(LaudoRepository laudoRepository,
+                              AppointmentRepository appointmentRepository) {
         this.laudoRepository = laudoRepository;
+        this.appointmentRepository = appointmentRepository;
     }
 
-    public Uni<Laudo> execute(UUID appointmentId, UUID specialistId, CreateLaudoRequest request) {
+    public Uni<Laudo> execute(UUID appointmentId, CreateLaudoRequest request) {
+        return appointmentRepository.findById(appointmentId)
+                .flatMap(optAppointment -> {
+                    if (optAppointment.isEmpty()) {
+                        return Uni.createFrom().failure(
+                                new NotFoundException("Appointment", appointmentId.toString()));
+                    }
+                    UUID specialistId = optAppointment.get().specialistId();
+                    return createDraft(appointmentId, specialistId, request);
+                });
+    }
+
+    private Uni<Laudo> createDraft(UUID appointmentId, UUID specialistId, CreateLaudoRequest request) {
         return laudoRepository.findByAppointmentId(appointmentId)
                 .flatMap(existing -> {
                     if (existing.isPresent()) {

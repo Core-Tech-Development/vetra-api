@@ -122,6 +122,20 @@ public class AppointmentRepository {
                 .map(rows -> rows.iterator().next().getLong("total"));
     }
 
+    public Uni<List<Appointment>> findBySpecialistIdAndStatus(UUID specialistId, String status, int offset, int limit) {
+        return client.preparedQuery(
+                        "SELECT " + SELECT_COLUMNS +
+                                " FROM appointment WHERE specialist_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4")
+                .execute(Tuple.of(specialistId, status, limit, offset))
+                .map(this::mapList);
+    }
+
+    public Uni<Long> countBySpecialistIdAndStatus(UUID specialistId, String status) {
+        return client.preparedQuery("SELECT count(*) AS total FROM appointment WHERE specialist_id = $1 AND status = $2")
+                .execute(Tuple.of(specialistId, status))
+                .map(rows -> rows.iterator().next().getLong("total"));
+    }
+
     public Uni<Appointment> update(Appointment appointment) {
         Tuple params = Tuple.tuple();
         params.addUUID(appointment.id());

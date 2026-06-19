@@ -1,5 +1,6 @@
 package dev.vetra.api.modules.notification.resource;
 
+import io.quarkus.security.Authenticated;
 import dev.vetra.api.modules.notification.usecase.CountUnreadNotificationsUseCase;
 import dev.vetra.api.modules.notification.usecase.ListNotificationsUseCase;
 import dev.vetra.api.modules.notification.usecase.MarkAllNotificationsReadUseCase;
@@ -32,6 +33,7 @@ import java.util.UUID;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Notifications", description = "User notification endpoints")
+@Authenticated
 public class NotificationResource {
 
     private final ListNotificationsUseCase listNotificationsUseCase;

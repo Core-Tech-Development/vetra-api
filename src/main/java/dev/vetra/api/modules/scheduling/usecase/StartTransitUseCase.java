@@ -6,6 +6,7 @@ import dev.vetra.api.modules.notification.service.NotificationService;
 import dev.vetra.api.modules.scheduling.domain.Appointment;
 import dev.vetra.api.modules.scheduling.domain.AppointmentStatus;
 import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
+import dev.vetra.api.modules.audit.usecase.LogAuditEventUseCase;
 import dev.vetra.api.shared.exception.BusinessException;
 import dev.vetra.api.shared.exception.NotFoundException;
 import io.smallrye.mutiny.Uni;
@@ -29,16 +30,19 @@ public class StartTransitUseCase {
     private final AppointmentOwnershipValidator ownershipValidator;
     private final ExamRequestRepository examRequestRepository;
     private final NotificationService notificationService;
+    private final LogAuditEventUseCase auditUseCase;
 
     @Inject
     public StartTransitUseCase(AppointmentRepository appointmentRepository,
                                AppointmentOwnershipValidator ownershipValidator,
                                ExamRequestRepository examRequestRepository,
-                               NotificationService notificationService) {
+                               NotificationService notificationService,
+                               LogAuditEventUseCase auditUseCase) {
         this.appointmentRepository = appointmentRepository;
         this.ownershipValidator = ownershipValidator;
         this.examRequestRepository = examRequestRepository;
         this.notificationService = notificationService;
+        this.auditUseCase = auditUseCase;
     }
 
     public Uni<Appointment> execute(UUID id, String callerUserId, Set<String> callerRoles) {
@@ -64,7 +68,11 @@ public class StartTransitUseCase {
                                                 NotificationType.SPECIALIST_IN_TRANSIT,
                                                 "Especialista a caminho",
                                                 null, saved.id(), "APPOINTMENT");
-                                    }));
+                                    }))
+                            .flatMap(saved -> auditUseCase.execute(
+                                    callerUserId, "APPOINTMENT", saved.id(), "START_TRANSIT", null, saved.toString())
+                                    .onFailure().recoverWithNull()
+                                    .replaceWith(saved));
                 });
     }
 }

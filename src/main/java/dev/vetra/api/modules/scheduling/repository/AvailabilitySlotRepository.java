@@ -103,6 +103,27 @@ public class AvailabilitySlotRepository {
                 .replaceWithVoid();
     }
 
+    /**
+     * Atomically reserves a slot only if its current status is AVAILABLE.
+     * Uses a conditional UPDATE to prevent race conditions when two concurrent
+     * requests try to reserve the same slot.
+     *
+     * @return true if the slot was successfully reserved, false if it was already taken
+     */
+    public Uni<Boolean> reserveIfAvailable(UUID id) {
+        Tuple params = Tuple.tuple();
+        params.addOffsetDateTime(OffsetDateTime.ofInstant(Instant.now(), ZoneOffset.UTC));
+        params.addUUID(id);
+
+        return client.preparedQuery("""
+                        UPDATE availability_slot
+                        SET status = 'RESERVED', updated_at = $1
+                        WHERE id = $2 AND status = 'AVAILABLE'
+                        """)
+                .execute(params)
+                .map(rows -> rows.rowCount() > 0);
+    }
+
     public Uni<Boolean> delete(UUID id) {
         return client.preparedQuery("DELETE FROM availability_slot WHERE id = $1")
                 .execute(Tuple.of(id))

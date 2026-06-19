@@ -3,6 +3,7 @@ package dev.vetra.api.modules.imaging.usecase;
 import dev.vetra.api.modules.imaging.domain.ExamFile;
 import dev.vetra.api.modules.imaging.repository.ExamFileRepository;
 import dev.vetra.api.modules.imaging.service.MinioStorageService;
+import dev.vetra.api.modules.audit.usecase.LogAuditEventUseCase;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -23,12 +24,15 @@ public class UploadExamFileUseCase {
 
     private final ExamFileRepository examFileRepository;
     private final MinioStorageService storageService;
+    private final LogAuditEventUseCase auditUseCase;
 
     @Inject
     public UploadExamFileUseCase(ExamFileRepository examFileRepository,
-                                 MinioStorageService storageService) {
+                                 MinioStorageService storageService,
+                                 LogAuditEventUseCase auditUseCase) {
         this.examFileRepository = examFileRepository;
         this.storageService = storageService;
+        this.auditUseCase = auditUseCase;
     }
 
     public Uni<ExamFile> execute(UUID appointmentId, String fileName, String fileType,
@@ -42,7 +46,7 @@ public class UploadExamFileUseCase {
                         throw new RuntimeException("Failed to upload file to storage", e);
                     }
                     return key;
-                }).emitOn(Infrastructure.getDefaultWorkerPool())
+                }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                 .flatMap(key -> {
                     ExamFile file = ExamFile.create(appointmentId, fileName, fileType, contentType,
                             key, size, uploadedBy);

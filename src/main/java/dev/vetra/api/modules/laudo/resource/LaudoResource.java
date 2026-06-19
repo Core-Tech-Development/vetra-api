@@ -2,17 +2,18 @@ package dev.vetra.api.modules.laudo.resource;
 
 import dev.vetra.api.modules.laudo.dto.CreateLaudoRequest;
 import dev.vetra.api.modules.laudo.dto.LaudoMapper;
+import dev.vetra.api.modules.laudo.dto.LaudoPdfUrlResponse;
 import dev.vetra.api.modules.laudo.dto.LaudoResponse;
 import dev.vetra.api.modules.laudo.dto.UpdateLaudoRequest;
 import dev.vetra.api.modules.laudo.usecase.CreateLaudoUseCase;
 import dev.vetra.api.modules.laudo.usecase.DeleteLaudoUseCase;
+import dev.vetra.api.modules.laudo.usecase.GenerateLaudoPdfUseCase;
 import dev.vetra.api.modules.laudo.usecase.GetLaudoByAppointmentUseCase;
+import dev.vetra.api.modules.laudo.usecase.GetLaudoPdfDownloadUrlUseCase;
 import dev.vetra.api.modules.laudo.usecase.GetLaudoUseCase;
 import dev.vetra.api.modules.laudo.usecase.IssueLaudoUseCase;
 import dev.vetra.api.modules.laudo.usecase.ListLaudosBySpecialistUseCase;
 import dev.vetra.api.modules.laudo.usecase.UpdateLaudoUseCase;
-import dev.vetra.api.modules.scheduling.repository.AppointmentRepository;
-import dev.vetra.api.shared.exception.NotFoundException;
 import dev.vetra.api.shared.pagination.PageRequest;
 import dev.vetra.api.shared.pagination.PageResponse;
 import io.smallrye.mutiny.Uni;
@@ -56,7 +57,8 @@ public class LaudoResource {
     private final DeleteLaudoUseCase deleteLaudoUseCase;
     private final ListLaudosBySpecialistUseCase listLaudosBySpecialistUseCase;
     private final GetLaudoByAppointmentUseCase getLaudoByAppointmentUseCase;
-    private final AppointmentRepository appointmentRepository;
+    private final GenerateLaudoPdfUseCase generateLaudoPdfUseCase;
+    private final GetLaudoPdfDownloadUrlUseCase getLaudoPdfDownloadUrlUseCase;
 
     @Inject
     public LaudoResource(CreateLaudoUseCase createLaudoUseCase,
@@ -66,7 +68,8 @@ public class LaudoResource {
                           DeleteLaudoUseCase deleteLaudoUseCase,
                           ListLaudosBySpecialistUseCase listLaudosBySpecialistUseCase,
                           GetLaudoByAppointmentUseCase getLaudoByAppointmentUseCase,
-                          AppointmentRepository appointmentRepository) {
+                          GenerateLaudoPdfUseCase generateLaudoPdfUseCase,
+                          GetLaudoPdfDownloadUrlUseCase getLaudoPdfDownloadUrlUseCase) {
         this.createLaudoUseCase = createLaudoUseCase;
         this.getLaudoUseCase = getLaudoUseCase;
         this.updateLaudoUseCase = updateLaudoUseCase;
@@ -74,11 +77,13 @@ public class LaudoResource {
         this.deleteLaudoUseCase = deleteLaudoUseCase;
         this.listLaudosBySpecialistUseCase = listLaudosBySpecialistUseCase;
         this.getLaudoByAppointmentUseCase = getLaudoByAppointmentUseCase;
-        this.appointmentRepository = appointmentRepository;
+        this.generateLaudoPdfUseCase = generateLaudoPdfUseCase;
+        this.getLaudoPdfDownloadUrlUseCase = getLaudoPdfDownloadUrlUseCase;
     }
 
     @POST
     @Path("/appointments/{appointmentId}/laudos")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Create draft laudo", description = "Creates a new draft diagnostic laudo for an appointment")
     @APIResponses({
             @APIResponse(responseCode = "201", description = "Laudo created",
@@ -89,26 +94,18 @@ public class LaudoResource {
             @PathParam("appointmentId")
             @Parameter(description = "Appointment UUID") UUID appointmentId,
             @Valid CreateLaudoRequest request) {
-        // Derive specialistId from the appointment
-        return appointmentRepository.findById(appointmentId)
-                .flatMap(optAppointment -> {
-                    if (optAppointment.isEmpty()) {
-                        return Uni.createFrom().failure(
-                                new NotFoundException("Appointment", appointmentId.toString()));
-                    }
-                    UUID specialistId = optAppointment.get().specialistId();
-                    return createLaudoUseCase.execute(appointmentId, specialistId, request)
-                            .map(laudo -> {
-                                LaudoResponse body = LaudoMapper.toResponse(laudo);
-                                return Response.created(URI.create("/api/v1/laudos/" + laudo.id()))
-                                        .entity(body)
-                                        .build();
-                            });
+        return createLaudoUseCase.execute(appointmentId, request)
+                .map(laudo -> {
+                    LaudoResponse body = LaudoMapper.toResponse(laudo);
+                    return Response.created(URI.create("/api/v1/laudos/" + laudo.id()))
+                            .entity(body)
+                            .build();
                 });
     }
 
     @GET
     @Path("/laudos/{id}")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "Get laudo by ID", description = "Retrieves a single laudo by its UUID")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Laudo found",
@@ -124,6 +121,7 @@ public class LaudoResource {
 
     @PUT
     @Path("/laudos/{id}")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Update draft laudo", description = "Updates findings, conclusion, and recommendations of a draft laudo")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Laudo updated",
@@ -141,6 +139,7 @@ public class LaudoResource {
 
     @PATCH
     @Path("/laudos/{id}/issue")
+    @RolesAllowed("SPECIALIST")
     @Operation(summary = "Issue laudo", description = "Transitions a draft laudo to ISSUED status")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Laudo issued",
@@ -173,6 +172,7 @@ public class LaudoResource {
 
     @GET
     @Path("/specialists/{specialistId}/laudos")
+    @RolesAllowed({"SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "List laudos by specialist", description = "Returns a paginated list of laudos by specialist")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Paginated laudo list")
@@ -192,6 +192,7 @@ public class LaudoResource {
 
     @GET
     @Path("/appointments/{appointmentId}/laudo")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
     @Operation(summary = "Get laudo by appointment", description = "Retrieves the laudo for a given appointment")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Laudo found",
@@ -203,5 +204,41 @@ public class LaudoResource {
             @Parameter(description = "Appointment UUID") UUID appointmentId) {
         return getLaudoByAppointmentUseCase.execute(appointmentId)
                 .map(laudo -> Response.ok(LaudoMapper.toResponse(laudo)).build());
+    }
+
+    @POST
+    @Path("/laudos/{id}/generate-pdf")
+    @RolesAllowed({"SPECIALIST", "PLATFORM_ADMIN"})
+    @Operation(summary = "Generate laudo PDF",
+            description = "Generates a PDF for an issued laudo and stores it in object storage")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "PDF generated",
+                    content = @Content(schema = @Schema(implementation = LaudoResponse.class))),
+            @APIResponse(responseCode = "404", description = "Laudo not found"),
+            @APIResponse(responseCode = "422", description = "Laudo is not in ISSUED status")
+    })
+    public Uni<Response> generatePdf(
+            @PathParam("id")
+            @Parameter(description = "Laudo UUID") UUID id) {
+        return generateLaudoPdfUseCase.execute(id)
+                .map(laudo -> Response.ok(LaudoMapper.toResponse(laudo)).build());
+    }
+
+    @GET
+    @Path("/laudos/{id}/pdf-download-url")
+    @RolesAllowed({"CLINIC_ADMIN", "CLINIC_STAFF", "SPECIALIST", "PLATFORM_ADMIN"})
+    @Operation(summary = "Get laudo PDF download URL",
+            description = "Generates a presigned download URL for the laudo PDF (valid for 2 hours)")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Download URL generated",
+                    content = @Content(schema = @Schema(implementation = LaudoPdfUrlResponse.class))),
+            @APIResponse(responseCode = "404", description = "Laudo not found"),
+            @APIResponse(responseCode = "422", description = "PDF not yet generated")
+    })
+    public Uni<Response> getPdfDownloadUrl(
+            @PathParam("id")
+            @Parameter(description = "Laudo UUID") UUID id) {
+        return getLaudoPdfDownloadUrlUseCase.execute(id)
+                .map(response -> Response.ok(response).build());
     }
 }
