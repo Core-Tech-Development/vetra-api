@@ -2,16 +2,15 @@ package dev.vetra.api.modules.scheduling.dto;
 
 import jakarta.validation.constraints.NotNull;
 
-import java.time.Instant;
 import java.util.List;
 
 public record CreateBulkSlotsRequest(
 
         @NotNull(message = "Start date is required")
-        Instant startDate,
+        String startDate,
 
         @NotNull(message = "End date is required")
-        Instant endDate,
+        String endDate,
 
         @NotNull(message = "Days of week are required")
         List<String> daysOfWeek,
@@ -25,6 +24,8 @@ public record CreateBulkSlotsRequest(
         String label,
 
         @NotNull(message = "Timezone is required")
-        String timezone
+        String timezone,
+
+        Integer slotDurationMinutes
 ) {
 }

@@ -3,6 +3,7 @@ package dev.vetra.api.modules.billing.dto;
 import dev.vetra.api.modules.billing.domain.BillingPayment;
 import dev.vetra.api.modules.billing.domain.BillingRecord;
 import dev.vetra.api.modules.billing.domain.ExamTypePricing;
+import dev.vetra.api.modules.billing.domain.SpecialistPricing;
 
 public final class BillingMapper {
 
@@ -27,6 +28,12 @@ public final class BillingMapper {
     public static ExamTypePricingResponse toResponse(ExamTypePricing p) {
         return new ExamTypePricingResponse(
                 p.id(), p.examType(), p.priceCents(), p.platformFeePercent(),
+                p.active(), p.createdAt(), p.updatedAt());
+    }
+
+    public static SpecialistPricingResponse toResponse(SpecialistPricing p) {
+        return new SpecialistPricingResponse(
+                p.id(), p.specialistId(), p.examType(), p.priceCents(),
                 p.active(), p.createdAt(), p.updatedAt());
     }
 }

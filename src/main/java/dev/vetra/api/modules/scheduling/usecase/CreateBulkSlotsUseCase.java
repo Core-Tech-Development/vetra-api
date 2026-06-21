@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 /**
  * Creates multiple availability slots in bulk for a specialist based on
  * a recurrence pattern (date range, days of week, time window, timezone).
+ * Optionally splits each day's time window into individual slots of a given duration.
  * All slots share a common recurrenceGroupId and are saved atomically.
  */
 @ApplicationScoped
@@ -33,6 +34,8 @@ public class CreateBulkSlotsUseCase {
 
     private static final Logger LOG = Logger.getLogger(CreateBulkSlotsUseCase.class);
     private static final long MAX_RANGE_DAYS = 90;
+    private static final int MIN_SLOT_DURATION_MINUTES = 15;
+    private static final int MAX_SLOT_DURATION_MINUTES = 480;
 
     private final AvailabilitySlotRepository slotRepository;
 
@@ -68,8 +71,16 @@ public class CreateBulkSlotsUseCase {
             );
         }
 
-        LocalDate startDate = request.startDate().atZone(zoneId).toLocalDate();
-        LocalDate endDate = request.endDate().atZone(zoneId).toLocalDate();
+        LocalDate startDate;
+        LocalDate endDate;
+        try {
+            startDate = LocalDate.parse(request.startDate());
+            endDate = LocalDate.parse(request.endDate());
+        } catch (DateTimeParseException e) {
+            return Uni.createFrom().failure(
+                    new BusinessException("INVALID_DATE_FORMAT", "Dates must be in YYYY-MM-DD format")
+            );
+        }
 
         if (endDate.isBefore(startDate)) {
             return Uni.createFrom().failure(
@@ -83,6 +94,29 @@ public class CreateBulkSlotsUseCase {
                     new BusinessException("DATE_RANGE_TOO_LARGE",
                             "Date range cannot exceed " + MAX_RANGE_DAYS + " days")
             );
+        }
+
+        Integer durationMinutes = request.slotDurationMinutes();
+        if (durationMinutes != null) {
+            if (durationMinutes < MIN_SLOT_DURATION_MINUTES) {
+                return Uni.createFrom().failure(
+                        new BusinessException("INVALID_SLOT_DURATION",
+                                "Slot duration must be at least " + MIN_SLOT_DURATION_MINUTES + " minutes")
+                );
+            }
+            if (durationMinutes > MAX_SLOT_DURATION_MINUTES) {
+                return Uni.createFrom().failure(
+                        new BusinessException("INVALID_SLOT_DURATION",
+                                "Slot duration cannot exceed " + MAX_SLOT_DURATION_MINUTES + " minutes")
+                );
+            }
+            long totalMinutes = ChronoUnit.MINUTES.between(startTime, endTime);
+            if (durationMinutes > totalMinutes) {
+                return Uni.createFrom().failure(
+                        new BusinessException("SLOT_DURATION_TOO_LARGE",
+                                "Slot duration (" + durationMinutes + "min) exceeds the time window (" + totalMinutes + "min)")
+                );
+            }
         }
 
         Set<DayOfWeek> targetDays;
@@ -103,16 +137,37 @@ public class CreateBulkSlotsUseCase {
         LocalDate current = startDate;
         while (!current.isAfter(endDate)) {
             if (targetDays.contains(current.getDayOfWeek())) {
-                ZonedDateTime zonedStart = current.atTime(startTime).atZone(zoneId);
-                ZonedDateTime zonedEnd = current.atTime(endTime).atZone(zoneId);
+                if (durationMinutes != null) {
+                    // Split into individual slots of the given duration
+                    LocalTime slotStart = startTime;
+                    while (true) {
+                        LocalTime slotEnd = slotStart.plusMinutes(durationMinutes);
+                        if (slotEnd.isAfter(endTime)) {
+                            break;
+                        }
 
-                Instant slotStartAt = zonedStart.toInstant();
-                Instant slotEndAt = zonedEnd.toInstant();
+                        ZonedDateTime zonedStart = current.atTime(slotStart).atZone(zoneId);
+                        ZonedDateTime zonedEnd = current.atTime(slotEnd).atZone(zoneId);
 
-                AvailabilitySlot slot = AvailabilitySlot.create(
-                        specialistId, slotStartAt, slotEndAt, request.label(), recurrenceGroupId
-                );
-                slots.add(slot);
+                        slots.add(AvailabilitySlot.create(
+                                specialistId, zonedStart.toInstant(), zonedEnd.toInstant(),
+                                request.label(), recurrenceGroupId
+                        ));
+
+                        slotStart = slotEnd;
+                    }
+                } else {
+                    // Single slot for the entire time window
+                    ZonedDateTime zonedStart = current.atTime(startTime).atZone(zoneId);
+                    ZonedDateTime zonedEnd = current.atTime(endTime).atZone(zoneId);
+
+                    Instant slotStartAt = zonedStart.toInstant();
+                    Instant slotEndAt = zonedEnd.toInstant();
+
+                    slots.add(AvailabilitySlot.create(
+                            specialistId, slotStartAt, slotEndAt, request.label(), recurrenceGroupId
+                    ));
+                }
             }
             current = current.plusDays(1);
         }
@@ -124,8 +179,9 @@ public class CreateBulkSlotsUseCase {
             );
         }
 
-        LOG.infof("Creating bulk slots: specialistId=%s, count=%d, recurrenceGroupId=%s",
-                specialistId, slots.size(), recurrenceGroupId);
+        LOG.infof("Creating bulk slots: specialistId=%s, count=%d, recurrenceGroupId=%s, durationMinutes=%s",
+                specialistId, slots.size(), recurrenceGroupId,
+                durationMinutes != null ? durationMinutes : "full-window");
 
         return slotRepository.saveBatch(slots);
     }

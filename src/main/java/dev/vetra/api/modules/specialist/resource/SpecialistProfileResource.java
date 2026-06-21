@@ -1,5 +1,10 @@
 package dev.vetra.api.modules.specialist.resource;
 
+import dev.vetra.api.modules.billing.dto.BillingMapper;
+import dev.vetra.api.modules.billing.dto.CreateSpecialistPricingRequest;
+import dev.vetra.api.modules.billing.dto.SpecialistPricingResponse;
+import dev.vetra.api.modules.billing.repository.SpecialistPricingRepository;
+import dev.vetra.api.modules.billing.usecase.UpsertSpecialistPricingUseCase;
 import dev.vetra.api.modules.specialist.dto.AddCoverageAreaRequest;
 import dev.vetra.api.modules.specialist.dto.CoverageAreaResponse;
 import dev.vetra.api.modules.specialist.dto.SpecialistMapper;
@@ -56,6 +61,8 @@ public class SpecialistProfileResource {
     private final ListCoverageAreasUseCase listCoverageAreasUseCase;
     private final RemoveCoverageAreaUseCase removeCoverageAreaUseCase;
     private final ToggleCoverageAreaUseCase toggleCoverageAreaUseCase;
+    private final SpecialistPricingRepository specialistPricingRepository;
+    private final UpsertSpecialistPricingUseCase upsertSpecialistPricingUseCase;
 
     @Inject
     public SpecialistProfileResource(SecurityContext securityContext,
@@ -64,7 +71,9 @@ public class SpecialistProfileResource {
                                      AddCoverageAreaUseCase addCoverageAreaUseCase,
                                      ListCoverageAreasUseCase listCoverageAreasUseCase,
                                      RemoveCoverageAreaUseCase removeCoverageAreaUseCase,
-                                     ToggleCoverageAreaUseCase toggleCoverageAreaUseCase) {
+                                     ToggleCoverageAreaUseCase toggleCoverageAreaUseCase,
+                                     SpecialistPricingRepository specialistPricingRepository,
+                                     UpsertSpecialistPricingUseCase upsertSpecialistPricingUseCase) {
         this.securityContext = securityContext;
         this.getMyProfileUseCase = getMyProfileUseCase;
         this.updateMyProfileUseCase = updateMyProfileUseCase;
@@ -72,6 +81,8 @@ public class SpecialistProfileResource {
         this.listCoverageAreasUseCase = listCoverageAreasUseCase;
         this.removeCoverageAreaUseCase = removeCoverageAreaUseCase;
         this.toggleCoverageAreaUseCase = toggleCoverageAreaUseCase;
+        this.specialistPricingRepository = specialistPricingRepository;
+        this.upsertSpecialistPricingUseCase = upsertSpecialistPricingUseCase;
     }
 
     @GET
@@ -194,6 +205,50 @@ public class SpecialistProfileResource {
                     return removeCoverageAreaUseCase.execute(areaId);
                 })
                 .map(ignored -> Response.noContent().build());
+    }
+
+    // ---- Pricing endpoints ----
+
+    @GET
+    @Path("/pricing")
+    @Operation(summary = "List own exam pricing", description = "Lists all exam pricing set by the currently authenticated specialist")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Pricing list"),
+            @APIResponse(responseCode = "401", description = "Unauthorized"),
+            @APIResponse(responseCode = "403", description = "Forbidden — SPECIALIST role required"),
+            @APIResponse(responseCode = "404", description = "Specialist profile not found for current user")
+    })
+    public Uni<Response> listPricing() {
+        String userId = extractUserId();
+        LOG.debugf("GET pricing for userId=%s", userId);
+        return getMyProfileUseCase.execute(userId)
+                .flatMap(specialist -> specialistPricingRepository.findBySpecialistId(specialist.id()))
+                .map(pricings -> {
+                    List<SpecialistPricingResponse> response = pricings.stream()
+                            .map(BillingMapper::toResponse)
+                            .toList();
+                    return Response.ok(response).build();
+                });
+    }
+
+    @PUT
+    @Path("/pricing")
+    @Operation(summary = "Upsert exam pricing", description = "Creates or updates the specialist's pricing for a specific exam type")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Pricing upserted",
+                    content = @Content(schema = @Schema(implementation = SpecialistPricingResponse.class))),
+            @APIResponse(responseCode = "400", description = "Validation error"),
+            @APIResponse(responseCode = "401", description = "Unauthorized"),
+            @APIResponse(responseCode = "403", description = "Forbidden — SPECIALIST role required"),
+            @APIResponse(responseCode = "404", description = "Specialist profile not found for current user")
+    })
+    public Uni<Response> upsertPricing(@Valid CreateSpecialistPricingRequest request) {
+        String userId = extractUserId();
+        LOG.debugf("PUT pricing for userId=%s, examType=%s", userId, request.examType());
+        return getMyProfileUseCase.execute(userId)
+                .flatMap(specialist -> upsertSpecialistPricingUseCase.execute(
+                        specialist.id(), request.examType(), request.priceCents()))
+                .map(pricing -> Response.ok(BillingMapper.toResponse(pricing)).build());
     }
 
     private String extractUserId() {

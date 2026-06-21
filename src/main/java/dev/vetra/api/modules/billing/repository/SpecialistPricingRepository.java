@@ -57,6 +57,30 @@ public class SpecialistPricingRepository {
                 .map(this::mapOptional);
     }
 
+    public Uni<SpecialistPricing> upsert(SpecialistPricing pricing) {
+        Tuple params = Tuple.tuple();
+        params.addUUID(pricing.id());
+        params.addUUID(pricing.specialistId());
+        params.addString(pricing.examType());
+        params.addLong(pricing.priceCents());
+        params.addBoolean(pricing.active());
+        params.addOffsetDateTime(OffsetDateTime.ofInstant(pricing.createdAt(), ZoneOffset.UTC));
+        params.addOffsetDateTime(OffsetDateTime.ofInstant(pricing.updatedAt(), ZoneOffset.UTC));
+
+        return client.preparedQuery("""
+                        INSERT INTO specialist_pricing (id, specialist_id, exam_type, price_cents,
+                            active, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        ON CONFLICT (specialist_id, exam_type)
+                        DO UPDATE SET price_cents = EXCLUDED.price_cents,
+                                      active = EXCLUDED.active,
+                                      updated_at = EXCLUDED.updated_at
+                        RETURNING id, specialist_id, exam_type, price_cents, active, created_at, updated_at
+                        """)
+                .execute(params)
+                .map(rows -> mapRow(rows.iterator().next()));
+    }
+
     public Uni<List<SpecialistPricing>> findBySpecialistId(UUID specialistId) {
         return client.preparedQuery("""
                         SELECT id, specialist_id, exam_type, price_cents, active, created_at, updated_at
